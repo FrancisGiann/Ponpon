@@ -1,11 +1,15 @@
 package dev.giann.pocket_entry
 
 import android.app.Activity
+import android.Manifest
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -19,14 +23,19 @@ import java.nio.charset.CodingErrorAction
 class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
     private var initialRoute: QuickEntryPolicy.Route? = null
+    private var initialBills = false
+    private var permissionForBills = false
+    private fun billsRoute(source: Intent?) = source?.action == BillReminder.OPEN && source?.dataString == BillReminder.URI
     private var fileResult: MethodChannel.Result? = null
     private var exportText: String? = null
+    private var permissionResult: MethodChannel.Result? = null
     private val maxBytes = 5 * 1024 * 1024
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val privatePreview = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).getBoolean("privatePreview", true)
         if (privatePreview) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
+        initialBills = billsRoute(intent)
         initialRoute = route(intent)
         consumeIntent()
     }
@@ -34,17 +43,25 @@ class MainActivity : FlutterActivity() {
         val parsed = QuickEntryPolicy.parse(source?.action, source?.dataString) ?: return null
         val widget = parsed.widgetId
         if (widget != null) {
-            val ids = AppWidgetManager.getInstance(this).getAppWidgetIds(ComponentName(this, QuickEntryWidget::class.java))
-            if (!ids.contains(widget)) return QuickEntryPolicy.Route(null, null)
+            if (!QuickEntryWidget.ownsWidget(this, widget)) return QuickEntryPolicy.Route(null, null)
         }
         return parsed
     }
     private fun consumeIntent() { intent?.action = Intent.ACTION_MAIN; intent?.data = null }
+    override fun onResume() {
+        super.onResume()
+        try { DailyReminder.reconcile(this) } catch (_: RuntimeException) { }
+        try { BillReminder.reconcile(this) } catch (_: RuntimeException) { }
+    }
     override fun onNewIntent(intent: Intent) {
         setIntent(intent)
         super.onNewIntent(intent)
+        val bills = billsRoute(intent)
         val entry = route(intent); consumeIntent()
-        if (entry != null) channel?.invokeMethod("quickEntry", mapOf("categoryId" to entry.categoryId))
+        if (bills) {
+            if (channel == null) initialBills = true else channel?.invokeMethod("quickEntry", mapOf("bills" to true))
+        }
+        else if (entry != null) channel?.invokeMethod("quickEntry", mapOf("categoryId" to entry.categoryId))
     }
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
@@ -52,22 +69,52 @@ class MainActivity : FlutterActivity() {
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {
                 "privatePath" -> { val folder = File(filesDir, "pocket_entry"); if (folder.isDirectory || folder.mkdirs()) result.success(folder.absolutePath) else result.error("storage", "Private storage is unavailable", null) }
-                "initialEntry" -> { val entry = initialRoute; initialRoute = null; result.success(entry?.let { mapOf("categoryId" to it.categoryId) }) }
+                "initialEntry" -> { val entry = initialRoute; val bills = initialBills; initialRoute = null; initialBills = false; result.success(if (bills) mapOf("bills" to true) else entry?.let { mapOf("categoryId" to it.categoryId) }) }
+                "reminderState" -> {
+                    try { result.success(DailyReminder.reconcile(this)) }
+                    catch (_: RuntimeException) { result.success(DailyReminder.state(this)) }
+                }
+                "setReminder" -> {
+                    val enabled = call.argument<Boolean>("enabled")
+                    val minute = call.argument<Int>("minuteOfDay")
+                    if (enabled == null || enabled && minute == null || minute != null && minute !in 0..1439) result.error("invalid", "Choose a valid reminder time", null)
+                    else try { result.success(DailyReminder.configure(this, enabled, minute)) }
+                    catch (_: RuntimeException) { result.error("reminder", "The reminder could not be scheduled. Try again.", null) }
+                }
+                "requestReminderPermission", "requestBillReminderPermission" -> {
+                    val bills = call.method == "requestBillReminderPermission"
+                    if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) result.success(if (bills) BillReminder.permitted(this) else DailyReminder.permitted(this))
+                    else if (permissionResult != null) result.error("busy", "A notification choice is already open", null)
+                    else { permissionForBills = bills; permissionResult = result; requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4103) }
+                }
+                "openNotificationSettings" -> {
+                    try { startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)); result.success(null) }
+                    catch (_: Exception) { result.error("reminder", "Open Android Settings, then Ponpon notifications.", null) }
+                }
                 "syncAppearance" -> {
                     val theme = call.argument<String>("theme") ?: "system"
                     val private = call.argument<Boolean>("privatePreview") ?: true
+                    val balanceVisible = call.argument<Boolean>("balanceWidgetVisible") ?: false
+                    val balance = call.argument<Any>("balanceCentavos")
+                    val walletCount = call.argument<Int>("activeWalletCount")
                     val raw = call.argument<List<Map<String, String>>>("categories") ?: emptyList()
-                    if (theme !in listOf("system", "light", "dark") || raw.size > 4 || raw.any { !(it["id"] ?: "").matches(Regex("[a-zA-Z0-9_-]{1,80}")) || (it["name"] ?: "").isEmpty() || (it["name"] ?: "").length > 30 }) result.error("invalid", "Invalid widget configuration", null)
+                    val bills = call.argument<List<Map<String, Any>>>("billReminders") ?: emptyList()
+                    if (!BillReminder.valid(bills) || theme !in listOf("system", "light", "dark") || (balance !is Long && balance !is Int) || walletCount == null || walletCount !in 0..20 || raw.size > 4 || raw.any { !(it["id"] ?: "").matches(Regex("[a-zA-Z0-9_-]{1,80}")) || (it["name"] ?: "").isEmpty() || (it["name"] ?: "").length > 30 }) result.error("invalid", "Invalid widget configuration", null)
                     else {
                         val json = JSONArray(); raw.forEach { json.put(JSONObject(it)) }
-                        val saved = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).edit().putString("theme", theme).putBoolean("privatePreview", private).putString("categories", json.toString()).commit()
+                        val saved = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).edit().putString("theme", theme).putBoolean("privatePreview", private).putString("categories", json.toString()).putBoolean("balanceVisible", balanceVisible).putLong("balanceCentavos", (balance as Number).toLong()).putInt("activeWalletCount", walletCount).putLong("balanceUpdatedAt", System.currentTimeMillis()).commit()
                         if (private) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                        if (saved) { QuickEntryWidget.refresh(this); result.success(null) } else result.error("storage", "Widget configuration could not be saved", null)
+                        if (saved) {
+                            QuickEntryWidget.refresh(this)
+                            try { BillReminder.configure(this, bills); result.success(null) }
+                            catch (_: RuntimeException) { result.error("reminder", "Records are saved but bill reminders could not refresh", null) }
+                        } else result.error("storage", "Widget configuration could not be saved", null)
                     }
                 }
                 "pinWidget" -> {
                     val manager = getSystemService(AppWidgetManager::class.java)
-                    result.success(manager.isRequestPinAppWidgetSupported && manager.requestPinAppWidget(ComponentName(this, QuickEntryWidget::class.java), null, null))
+                    val provider = if (call.argument<Boolean>("balance") == true) BalanceEntryWidget::class.java else if (call.argument<Boolean>("compact") == true) CompactEntryWidget::class.java else QuickEntryWidget::class.java
+                    result.success(manager.isRequestPinAppWidgetSupported && manager.requestPinAppWidget(ComponentName(this, provider), null, null))
                 }
                 "exportBackup" -> {
                     val text = call.argument<String>("text")
@@ -75,7 +122,7 @@ class MainActivity : FlutterActivity() {
                     else if (text == null || text.toByteArray(Charsets.UTF_8).size > maxBytes) result.error("invalid", "Backup is too large", null)
                     else {
                         fileResult = result; exportText = text
-                        val name = (call.argument<String>("name") ?: "Pocket Entry.json").replace(Regex("[^a-zA-Z0-9 ._-]"), "_").take(80)
+                        val name = (call.argument<String>("name") ?: "Ponpon.json").replace(Regex("[^a-zA-Z0-9 ._-]"), "_").take(80)
                         try { startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, name), 4101) }
                         catch (_: Exception) { finishFileError("A document picker is unavailable") }
                     }
@@ -91,6 +138,10 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 4103) { permissionResult?.success(if (permissionForBills) BillReminder.permitted(this) else DailyReminder.permitted(this)); permissionResult = null; permissionForBills = false }
     }
     private fun finishFileError(message: String) {
         fileResult?.error("document", message, null); fileResult = null; exportText = null

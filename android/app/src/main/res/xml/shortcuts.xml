@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
-    <shortcut android:shortcutId="quick_add" android:enabled="true" android:icon="@drawable/ic_entry" android:shortcutShortLabel="@string/quick_add" android:shortcutLongLabel="@string/quick_add_long">
+    <shortcut android:shortcutId="quick_add" android:enabled="true" android:icon="@drawable/ponpon_mark" android:shortcutShortLabel="@string/quick_add" android:shortcutLongLabel="@string/quick_add_long">
         <intent android:action="dev.giann.pocket_entry.QUICK_ADD" android:targetPackage="dev.giann.pocket_entry" android:targetClass="dev.giann.pocket_entry.MainActivity" />
     </shortcut>
 </shortcuts>

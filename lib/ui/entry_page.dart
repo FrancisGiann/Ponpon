@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../app_controller.dart';
 import '../domain/ledger.dart';
 import 'design.dart';
+import 'screens.dart' show DirectEntryButtonsPage, WalletsPage;
 
 class EntryPage extends StatefulWidget {
   const EntryPage({super.key, required this.controller});
@@ -135,6 +136,7 @@ class _EntryPageState extends State<EntryPage> {
   }
 
   Future<void> chooseCategory() async {
+    final categories = app.ledger.categoriesFor(draft.kind);
     final chosen = await showPocketSheet<String>(
       context: context,
       builder: (ctx) => SheetFrame(
@@ -147,18 +149,14 @@ class _EntryPageState extends State<EntryPage> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  for (
-                    var i = 0;
-                    i < app.ledger.availableCategories.length;
-                    i++
-                  )
+                  for (var i = 0; i < categories.length; i++)
                     Builder(
                       builder: (ctx) {
-                        final c = app.ledger.availableCategories[i];
+                        final c = categories[i];
                         return GroupRow(
                           c.name,
                           icon: categoryIcon(c.icon),
-                          last: i == app.ledger.availableCategories.length - 1,
+                          last: i == categories.length - 1,
                           trailing: c.id == draft.categoryId
                               ? Icon(
                                   CupertinoIcons.checkmark_circle_fill,
@@ -209,11 +207,13 @@ class _EntryPageState extends State<EntryPage> {
       }
       final p = Palette.of(context);
       final isTransfer = draft.kind == EntryKind.transfer;
-      final quickCategories = app.ledger.availableCategories
-          .where((c) => c.id != 'income')
-          .take(4)
+      final categories = app.ledger.categoriesFor(draft.kind);
+      final quickCategories = categories
+          .take(draft.kind == EntryKind.income ? 5 : 4)
           .toList();
-      final chosen = app.ledger.category(draft.categoryId);
+      final chosen = categories
+          .where((c) => c.id == draft.categoryId)
+          .firstOrNull;
       if (chosen != null && !quickCategories.any((c) => c.id == chosen.id)) {
         if (quickCategories.length == 4) quickCategories.removeLast();
         quickCategories.add(chosen);
@@ -236,6 +236,12 @@ class _EntryPageState extends State<EntryPage> {
                   final small =
                       constraints.maxHeight < 680 ||
                       MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                  final compactKeypad =
+                      small ||
+                      (!isTransfer && app.ledger.quickWallets.length == 4);
+                  final landscape =
+                      constraints.maxHeight < 480 &&
+                      constraints.maxWidth >= 620;
                   final content = Column(
                     children: [
                       Padding(
@@ -297,14 +303,17 @@ class _EntryPageState extends State<EntryPage> {
                             onValueChanged: (value) {
                               if (!submitting && !app.busy && value != null) {
                                 change(() {
-                                  draft.kind = value;
-                                  if (value == EntryKind.income &&
-                                      draft.categoryId == null) {
-                                    draft.categoryId = null;
-                                  }
+                                  app.changeDraftKind(value);
                                 });
                               }
                             },
+                            disabledChildren:
+                                app.ledger
+                                        .entry(draft.editingId ?? '')
+                                        ?.billId !=
+                                    null
+                                ? {EntryKind.income, EntryKind.transfer}
+                                : const {},
                             children: {
                               for (final kind in EntryKind.values)
                                 kind: SegmentLabel(switch (kind) {
@@ -334,20 +343,25 @@ class _EntryPageState extends State<EntryPage> {
                                     liveRegion: true,
                                     child: ExcludeSemantics(
                                       child: SizedBox(
-                                        height: small ? 58 : 96,
+                                        height: small
+                                            ? (amountBounds.maxHeight - 58)
+                                                  .clamp(24.0, 58.0)
+                                            : 96,
                                         child: Row(
                                           mainAxisAlignment:
                                               MainAxisAlignment.center,
                                           crossAxisAlignment:
                                               CrossAxisAlignment.center,
                                           children: [
-                                            Text(
-                                              '₱',
-                                              style: textStyle(
-                                                context,
-                                                size: 29,
-                                                weight: FontWeight.w500,
-                                                color: p.secondary,
+                                            FittedBox(
+                                              child: Text(
+                                                '₱',
+                                                style: textStyle(
+                                                  context,
+                                                  size: 29,
+                                                  weight: FontWeight.w500,
+                                                  color: p.secondary,
+                                                ),
                                               ),
                                             ),
                                             const SizedBox(width: 10),
@@ -376,6 +390,7 @@ class _EntryPageState extends State<EntryPage> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Press(
+                                        key: const ValueKey('entry-date'),
                                         onPressed: app.busy ? null : chooseDate,
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 14,
@@ -633,9 +648,9 @@ class _EntryPageState extends State<EntryPage> {
                       Padding(
                         padding: EdgeInsets.fromLTRB(
                           24,
-                          small ? 2 : 4,
+                          compactKeypad ? 2 : 4,
                           24,
-                          small ? 6 : 8,
+                          compactKeypad ? 6 : 8,
                         ),
                         child: Column(
                           children: [
@@ -651,7 +666,7 @@ class _EntryPageState extends State<EntryPage> {
                                       (key) => Expanded(
                                         child: Padding(
                                           padding: EdgeInsets.all(
-                                            small ? 3 : 4,
+                                            compactKeypad ? 3 : 4,
                                           ),
                                           child: Press(
                                             key: ValueKey('key-$key'),
@@ -659,7 +674,7 @@ class _EntryPageState extends State<EntryPage> {
                                                 ? null
                                                 : () => digit(key),
                                             padding: EdgeInsets.symmetric(
-                                              vertical: small ? 0 : 12,
+                                              vertical: compactKeypad ? 0 : 12,
                                             ),
                                             radius: 18,
                                             color: p.surface,
@@ -678,7 +693,9 @@ class _EntryPageState extends State<EntryPage> {
                                                     key,
                                                     style: textStyle(
                                                       context,
-                                                      size: small ? 24 : 30,
+                                                      size: compactKeypad
+                                                          ? 24
+                                                          : 30,
                                                       weight: FontWeight.w400,
                                                       tabular: true,
                                                     ),
@@ -694,7 +711,17 @@ class _EntryPageState extends State<EntryPage> {
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-                        child: isTransfer
+                        child: isTransfer && selectableWallets.length < 2
+                            ? PrimaryButton(
+                                'Add or restore wallets',
+                                onPressed: app.busy
+                                    ? null
+                                    : () => pushPocket<void>(
+                                        context,
+                                        WalletsPage(app: app),
+                                      ),
+                              )
+                            : isTransfer
                             ? PrimaryButton(
                                 'Record ${app.ledger.wallet(draft.from)?.label ?? "From"} → ${app.ledger.wallet(draft.to)?.label ?? "To"}',
                                 icon: CupertinoIcons.arrow_right_arrow_left,
@@ -702,60 +729,17 @@ class _EntryPageState extends State<EntryPage> {
                                     ? null
                                     : () => save(draft.from),
                               )
-                            : Row(
-                                children: [
-                                  Expanded(
-                                    child: _SaveWallet(
-                                      wallet: app.ledger.quickWallets.first,
-                                      kind: draft.kind,
-                                      onPressed: submitting || app.busy
-                                          ? null
-                                          : () => save(
-                                              app.ledger.quickWallets.first,
-                                            ),
-                                    ),
-                                  ),
-                                  if (app.ledger.quickWallets.length > 1)
-                                    const SizedBox(width: 12),
-                                  if (app.ledger.quickWallets.length > 1)
-                                    Expanded(
-                                      child: _SaveWallet(
-                                        wallet: app.ledger.quickWallets[1],
-                                        kind: draft.kind,
-                                        onPressed: submitting || app.busy
-                                            ? null
-                                            : () => save(
-                                                app.ledger.quickWallets[1],
-                                              ),
-                                      ),
-                                    ),
-                                  if (selectableWallets.length >
-                                      app.ledger.quickWallets.length) ...[
-                                    const SizedBox(width: 8),
-                                    Press(
-                                      key: const ValueKey('more-wallets'),
-                                      label: 'More wallets',
-                                      padding: const EdgeInsets.all(8),
-                                      color: p.surface,
-                                      onPressed: submitting || app.busy
-                                          ? null
-                                          : () async {
-                                              final w = await chooseWallet(
-                                                context,
-                                                selectableWallets,
-                                                title: entryAction(draft.kind),
-                                              );
-                                              if (w != null && mounted) {
-                                                await save(w);
-                                              }
-                                            },
-                                      child: Icon(
-                                        CupertinoIcons.ellipsis,
-                                        color: p.accent,
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                            : _DirectWalletActions(
+                                key: ValueKey(
+                                  app.ledger.preferences.quickWallets.join(','),
+                                ),
+                                app: app,
+                                kind: draft.kind,
+                                compact: small,
+                                landscape: landscape,
+                                wallets: selectableWallets,
+                                disabled: submitting || app.busy,
+                                onSave: save,
                               ),
                       ),
                     ],
@@ -785,9 +769,22 @@ class _EntryPageState extends State<EntryPage> {
                       ],
                     );
                   }
-                  return constraints.maxHeight < 480
+                  final enlarged =
+                      MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                  final needsScroll =
+                      constraints.maxHeight < 480 ||
+                      constraints.maxHeight < 640 &&
+                          (enlarged ||
+                              app.ledger.quickWallets.length > 2 ||
+                              app.ledger.quickWallets.any(
+                                (w) => w.label.length > 18,
+                              ));
+                  return needsScroll
                       ? SingleChildScrollView(
-                          child: SizedBox(height: 640, child: content),
+                          child: SizedBox(
+                            height: enlarged ? 700 : 680,
+                            child: content,
+                          ),
                         )
                       : content;
                 },
@@ -801,26 +798,35 @@ class _EntryPageState extends State<EntryPage> {
 }
 
 class _SaveWallet extends StatelessWidget {
-  const _SaveWallet({required this.wallet, required this.kind, this.onPressed});
+  const _SaveWallet({
+    required this.wallet,
+    required this.kind,
+    required this.showIcon,
+    required this.compact,
+    this.navigationHint,
+    this.onPressed,
+  });
   final Wallet wallet;
   final EntryKind kind;
+  final bool showIcon, compact;
+  final String? navigationHint;
   final VoidCallback? onPressed;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final tone = walletColor(context, wallet);
     final foreground = p.dark ? p.background : const Color(0xFFFFFFFF);
     return Press(
       key: ValueKey('save-${wallet.name}'),
       label: '${entryAction(kind)} ${wallet.label}',
-      color: tone,
+      color: walletColor(context, wallet),
       onPressed: onPressed,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      radius: 20,
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: compact ? 6 : 12),
+      radius: 16,
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            entryAction(kind),
+            navigationHint ?? entryAction(kind),
             style: textStyle(
               context,
               size: 12,
@@ -832,15 +838,14 @@ class _SaveWallet extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (MediaQuery.textScalerOf(context).scale(1) <= 1.25) ...[
+              if (showIcon) ...[
                 Icon(walletIcon(wallet.icon), color: foreground, size: 19),
                 const SizedBox(width: 7),
               ],
               Flexible(
                 child: Text(
                   wallet.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: textStyle(
                     context,
                     size: 17,
@@ -853,6 +858,331 @@ class _SaveWallet extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DirectWalletActions extends StatefulWidget {
+  const _DirectWalletActions({
+    super.key,
+    required this.app,
+    required this.kind,
+    required this.compact,
+    required this.landscape,
+    required this.wallets,
+    required this.disabled,
+    required this.onSave,
+  });
+  final AppController app;
+  final EntryKind kind;
+  final bool compact, landscape;
+  final List<Wallet> wallets;
+  final bool disabled;
+  final Future<void> Function(Wallet) onSave;
+  @override
+  State<_DirectWalletActions> createState() => _DirectWalletActionsState();
+}
+
+class _DirectWalletActionsState extends State<_DirectWalletActions> {
+  final rail = ScrollController();
+  int first = 0;
+  bool atStart = true, atEnd = false;
+  double extent = 1;
+  int step = 1;
+  @override
+  void dispose() {
+    rail.dispose();
+    super.dispose();
+  }
+
+  Future<void> picker() async {
+    final selected = await chooseWallet(
+      context,
+      widget.wallets,
+      title: entryAction(widget.kind),
+      manageButtons: () {
+        if (mounted) {
+          pushPocket<void>(context, DirectEntryButtonsPage(app: widget.app));
+        }
+      },
+    );
+    if (selected != null && mounted) await widget.onSave(selected);
+  }
+
+  double labelHeight(Wallet wallet, double width, bool icon) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: wallet.label,
+        style: textStyle(context, size: 17, weight: FontWeight.w600),
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    );
+    painter.layout(
+      maxWidth: (width - 24 - (icon ? 26 : 0)).clamp(1, double.infinity),
+    );
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  bool namesFit(
+    List<Wallet> wallets,
+    double width,
+    bool icon, {
+    int lines = 1,
+  }) {
+    final line = MediaQuery.textScalerOf(context).scale(17) * 1.3;
+    return wallets.every(
+      (wallet) => labelHeight(wallet, width, icon) <= line * lines + .1,
+    );
+  }
+
+  void move(bool forward) {
+    if (!rail.hasClients || widget.disabled) return;
+    final target = (rail.offset + (forward ? 1 : -1) * extent * step).clamp(
+      0.0,
+      rail.position.maxScrollExtent,
+    );
+    if (MotionScope.of(context)) {
+      rail.jumpTo(target);
+    } else {
+      rail.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wallets = widget.app.ledger.quickWallets, p = Palette.of(context);
+    if (widget.wallets.isEmpty) {
+      return PrimaryButton(
+        'Add or restore a wallet',
+        icon: CupertinoIcons.add,
+        onPressed: widget.disabled
+            ? null
+            : () => pushPocket<void>(context, WalletsPage(app: widget.app)),
+      );
+    }
+    if (wallets.isEmpty) {
+      return PrimaryButton(
+        key: const ValueKey('choose-save-wallet'),
+        'Choose wallet to save',
+        icon: CupertinoIcons.square_grid_2x2,
+        onPressed: widget.disabled ? null : picker,
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, bounds) {
+        const gap = 10.0;
+        final width = bounds.maxWidth - (widget.landscape ? 56 : 0);
+        final large = MediaQuery.textScalerOf(context).scale(1) > 1.25;
+        final columns = wallets.length <= 3 ? wallets.length : 2;
+        final slotWidth = (width - gap * (columns - 1)) / columns;
+        final inlineIcon = columns < 3 && !large;
+        final inline =
+            wallets.length <= 3 &&
+            namesFit(
+              wallets,
+              slotWidth,
+              inlineIcon,
+              lines: wallets.length < 3 ? 2 : 1,
+            );
+        final grid =
+            wallets.length == 4 &&
+            !widget.compact &&
+            namesFit(wallets, slotWidth, inlineIcon, lines: 2);
+        final scrolling = !inline && !grid;
+        final preferred = (large ? 220.0 : 176.0).clamp(0.0, width);
+        final railWidth = namesFit(wallets, preferred, !large, lines: 2)
+            ? preferred
+            : width;
+        final cardWidth = scrolling ? railWidth : slotWidth;
+        final icon = scrolling ? !large : inlineIcon;
+        final nameHeight = wallets
+            .map((w) => labelHeight(w, cardWidth, icon))
+            .reduce((a, b) => a > b ? a : b);
+        final buttonHeight =
+            (MediaQuery.textScalerOf(context).scale(12) * 1.3 +
+                    4 +
+                    nameHeight +
+                    (widget.compact ? 12 : 24))
+                .clamp(68.0, double.infinity)
+                .ceilToDouble();
+        extent = cardWidth + gap;
+        step = (width / extent).floor().clamp(1, wallets.length);
+        Widget action(Wallet wallet) => SizedBox(
+          width: cardWidth,
+          height: buttonHeight,
+          child: _SaveWallet(
+            wallet: wallet,
+            kind: widget.kind,
+            showIcon: icon,
+            compact: widget.compact,
+            navigationHint: widget.landscape && scrolling
+                ? '${entryAction(widget.kind)} · Swipe ${wallets.indexOf(wallet) + 1} of ${wallets.length}'
+                : null,
+            onPressed: widget.disabled ? null : () => widget.onSave(wallet),
+          ),
+        );
+        Widget row(Iterable<Wallet> items) => Row(
+          children: [
+            for (final indexed in items.indexed) ...[
+              if (indexed.$1 > 0) const SizedBox(width: gap),
+              action(indexed.$2),
+            ],
+          ],
+        );
+        final buttons = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (scrolling)
+              SizedBox(
+                height: buttonHeight,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (event) {
+                    if (event.metrics.axis == Axis.horizontal) {
+                      final value = (event.metrics.pixels / extent)
+                          .floor()
+                          .clamp(0, wallets.length - 1);
+                      final start = event.metrics.extentBefore <= .5;
+                      final end = event.metrics.extentAfter <= .5;
+                      if (value != first || start != atStart || end != atEnd) {
+                        setState(() {
+                          first = value;
+                          atStart = start;
+                          atEnd = end;
+                        });
+                      }
+                    }
+                    return false;
+                  },
+                  child: ListView.separated(
+                    key: const ValueKey('direct-wallet-pages'),
+                    controller: rail,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: wallets.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: gap),
+                    itemBuilder: (_, index) => action(wallets[index]),
+                  ),
+                ),
+              )
+            else if (grid)
+              Column(
+                children: [
+                  row(wallets.take(2)),
+                  const SizedBox(height: gap),
+                  row(wallets.skip(2)),
+                ],
+              )
+            else
+              row(wallets),
+          ],
+        );
+        if (widget.landscape) {
+          return Row(
+            children: [
+              SizedBox(width: width, child: buttons),
+              const SizedBox(width: 8),
+              Press(
+                key: const ValueKey('more-wallets'),
+                label: 'All wallets and direct entry buttons',
+                onPressed: widget.disabled ? null : picker,
+                padding: const EdgeInsets.all(12),
+                child: Icon(
+                  CupertinoIcons.square_grid_2x2,
+                  color: p.accent,
+                  size: 22,
+                ),
+              ),
+            ],
+          );
+        }
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            buttons,
+            Row(
+              children: [
+                Press(
+                  key: const ValueKey('more-wallets'),
+                  label: 'All wallets and direct entry buttons',
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 8,
+                  ),
+                  onPressed: widget.disabled ? null : picker,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        CupertinoIcons.square_grid_2x2,
+                        color: p.accent,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'All wallets',
+                        style: textStyle(
+                          context,
+                          size: 13,
+                          weight: FontWeight.w600,
+                          color: p.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                if (scrolling) ...[
+                  Text(
+                    '${first + 1}/${wallets.length}',
+                    style: textStyle(
+                      context,
+                      size: 11,
+                      color: p.secondary,
+                      tabular: true,
+                    ),
+                  ),
+                  Press(
+                    key: const ValueKey('previous-direct-wallets'),
+                    label: 'Previous direct entry wallets',
+                    onPressed: widget.disabled || atStart
+                        ? null
+                        : () => move(false),
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(
+                      CupertinoIcons.chevron_left,
+                      size: 18,
+                      color: widget.disabled || atStart
+                          ? p.secondary.withValues(alpha: .45)
+                          : p.accent,
+                    ),
+                  ),
+                  Press(
+                    key: const ValueKey('next-direct-wallets'),
+                    label: 'Next direct entry wallets',
+                    onPressed: widget.disabled || atEnd
+                        ? null
+                        : () => move(true),
+                    padding: const EdgeInsets.all(10),
+                    child: Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 18,
+                      color: widget.disabled || atEnd
+                          ? p.secondary.withValues(alpha: .45)
+                          : p.accent,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

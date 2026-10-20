@@ -36,6 +36,7 @@ class _AllowanceState extends State<AllowancePage> {
   @override
   void initState() {
     super.initState();
+    if (wallet?.archived == true) wallet = null;
     final today = dayKey(widget.app.clock());
     final old = widget.app.ledger.allowance?.startDate;
     start = old != null && old.compareTo(today) > 0 ? old : today;

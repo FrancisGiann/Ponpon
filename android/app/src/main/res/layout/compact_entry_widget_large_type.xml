@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='utf-8'?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="8dp" android:background="@drawable/widget_background">
+  <LinearLayout android:id="@+id/widget_header" android:layout_width="match_parent" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical" android:contentDescription="Add an entry in Ponpon" android:visibility="gone">
+    <ImageView android:layout_width="28dp" android:layout_height="28dp" android:src="@drawable/ponpon_mark" android:importantForAccessibility="no" android:layout_marginEnd="10dp" />
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:importantForAccessibility="no">
+      <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Ponpon" android:textSize="16sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" />
+      <TextView android:id="@+id/widget_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Tap a category" android:textSize="11sp" android:fontFamily="@font/inter" android:maxLines="1" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:id="@+id/category_grid" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical">
+    <LinearLayout android:id="@+id/widget_row_1" android:layout_width="match_parent" android:layout_height="0dp" android:minHeight="48dp" android:layout_weight="1" android:orientation="horizontal">
+      <LinearLayout android:id="@+id/category_one" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:minHeight="48dp" android:layout_marginEnd="4dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="4dp" android:paddingVertical="2dp" android:background="@drawable/widget_chip" android:importantForAccessibility="yes">
+        <ImageView android:id="@+id/category_one_icon" android:layout_width="18dp" android:layout_height="18dp" android:layout_marginBottom="4dp" android:src="@drawable/category_food_light" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/category_one_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Food" android:gravity="center" android:textSize="12sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" android:ellipsize="end" android:importantForAccessibility="no" />
+      </LinearLayout>
+      <LinearLayout android:id="@+id/category_two" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:minHeight="48dp" android:layout_marginStart="4dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="4dp" android:paddingVertical="2dp" android:background="@drawable/widget_chip" android:importantForAccessibility="yes">
+        <ImageView android:id="@+id/category_two_icon" android:layout_width="18dp" android:layout_height="18dp" android:layout_marginBottom="4dp" android:src="@drawable/category_travel_light" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/category_two_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Travel" android:gravity="center" android:textSize="12sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" android:ellipsize="end" android:importantForAccessibility="no" />
+      </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/widget_row_2" android:layout_width="match_parent" android:layout_height="0dp" android:minHeight="48dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginTop="8dp">
+      <LinearLayout android:id="@+id/category_three" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:minHeight="48dp" android:layout_marginEnd="4dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="4dp" android:paddingVertical="2dp" android:background="@drawable/widget_chip" android:importantForAccessibility="yes">
+        <ImageView android:id="@+id/category_three_icon" android:layout_width="18dp" android:layout_height="18dp" android:layout_marginBottom="4dp" android:src="@drawable/category_bills_light" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/category_three_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Bills" android:gravity="center" android:textSize="12sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" android:ellipsize="end" android:importantForAccessibility="no" />
+      </LinearLayout>
+      <LinearLayout android:id="@+id/category_four" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:minHeight="48dp" android:layout_marginStart="4dp" android:orientation="vertical" android:gravity="center" android:paddingHorizontal="4dp" android:paddingVertical="2dp" android:background="@drawable/widget_chip" android:importantForAccessibility="yes">
+        <ImageView android:id="@+id/category_four_icon" android:layout_width="18dp" android:layout_height="18dp" android:layout_marginBottom="4dp" android:src="@drawable/category_shopping_light" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/category_four_name" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Shopping" android:gravity="center" android:textSize="12sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" android:ellipsize="end" android:importantForAccessibility="no" />
+      </LinearLayout>
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:id="@+id/widget_empty_add" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center" android:orientation="vertical" android:visibility="gone" android:background="@drawable/widget_chip" android:contentDescription="Add an entry">
+    <ImageView android:layout_width="32dp" android:layout_height="32dp" android:src="@drawable/ponpon_mark" android:importantForAccessibility="no" />
+    <TextView android:id="@+id/widget_empty_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Quick add" android:layout_marginTop="8dp" android:textSize="15sp" android:fontFamily="@font/inter" android:textStyle="bold" android:importantForAccessibility="no" />
+  </LinearLayout>
+</LinearLayout>

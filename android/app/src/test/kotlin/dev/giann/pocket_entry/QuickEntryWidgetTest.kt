@@ -134,5 +134,30 @@ class QuickEntryWidgetTest {
             context.resources.updateConfiguration(original,context.resources.displayMetrics)
         }
     }
+    @Test fun actualLauncherIconIsRenderedWithoutChangingAssets() {
+        val info = context.packageManager.getApplicationInfo(context.packageName, 0)
+        assertEquals(R.mipmap.ponpon_launcher, info.icon)
+        val drawable = context.getDrawable(info.icon)!!
+        val bitmap = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, 512, 512); drawable.draw(Canvas(bitmap))
+        val directory = File(requireNotNull(System.getProperty("pocket.previewDir"))); directory.mkdirs()
+        File(directory, "current-launcher-icon.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        assertTrue(File(directory, "current-launcher-icon.png").length() > 1000)
+    }
+    @Test fun walletLauncherUsesVectorsAndOffersAMonochromeLayer() {
+        val drawable = context.getDrawable(R.mipmap.ponpon_launcher) as android.graphics.drawable.AdaptiveIconDrawable
+        assertTrue(drawable.foreground is android.graphics.drawable.VectorDrawable)
+        assertNotNull(drawable.monochrome)
+        for (size in listOf(48, 96, 192)) {
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            drawable.setBounds(0, 0, size, size); drawable.draw(Canvas(bitmap))
+            assertNotEquals(bitmap.getPixel(size / 2, size / 2), bitmap.getPixel(size / 2, size / 8))
+        }
+        val mono = requireNotNull(drawable.monochrome)
+        val bitmap = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        mono.setBounds(0, 0, 512, 512); mono.draw(Canvas(bitmap))
+        val directory = File(requireNotNull(System.getProperty("pocket.previewDir"))); directory.mkdirs()
+        File(directory, "wallet-icon-monochrome-023.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
     private fun allText(view: View): String = if (view is TextView) view.text.toString() else if (view is android.view.ViewGroup) (0 until view.childCount).joinToString(" ") { allText(view.getChildAt(it)) } else ""
 }

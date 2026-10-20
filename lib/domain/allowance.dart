@@ -129,22 +129,33 @@ AllowanceCatchUp catchUpAllowance(Ledger original, DateTime now) {
     throw const LedgerException('Choose an active allowance wallet.');
   }
   var ledger = original;
-  var category = ledger.categories
-      .where((c) => c.icon == 'income' && !c.archived)
-      .firstOrNull;
-  if (category == null) {
-    if (ledger.categories.length >= 100) {
-      throw const LedgerException(
-        'Unarchive an income category before recording allowance.',
-      );
-    }
-    category = Category(id: newId(), name: 'Allowance', icon: 'income');
-    ledger = ledger.copy(categories: [...ledger.categories, category]);
-  }
   var count = 0;
   while (day.compareTo(today) <= 0) {
     if (s.days.contains(localDay(day).weekday) &&
         ledger.entry(s.occurrenceId(day)) == null) {
+      final builtin = ledger.category('income_allowance');
+      var category = builtin != null
+          ? (!builtin.archived && builtin.isIncome ? builtin : null)
+          : null;
+      category ??= ledger.availableCategories
+          .where((c) => c.isIncome && c.name.toLowerCase() == 'allowance')
+          .firstOrNull;
+      if (category == null &&
+          builtin == null &&
+          ledger.categories.length < 100) {
+        category = defaultIncomeCategories.firstWhere(
+          (c) => c.id == 'income_allowance',
+        );
+        ledger = ledger.copy(categories: [...ledger.categories, category]);
+      }
+      category ??= ledger.availableCategories
+          .where((c) => c.isIncome)
+          .firstOrNull;
+      if (category == null) {
+        throw const LedgerException(
+          'Choose an active income category before recording allowance.',
+        );
+      }
       final timestamp = now.millisecondsSinceEpoch;
       ledger = ledger.put(
         Entry(

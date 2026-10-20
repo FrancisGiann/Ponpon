@@ -501,6 +501,8 @@ void main() {
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(PocketApp(controller: app));
       await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView).first, const Offset(0, -400));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Add an entry').first);
       await tester.pumpAndSettle();
       await tester.tap(
@@ -509,13 +511,21 @@ void main() {
           matching: find.text('Food'),
         ),
       );
+      await tester.ensureVisible(find.byKey(const ValueKey('key-7')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('key-7')));
       expect(find.bySemanticsLabel('Paid with Cash'), findsOneWidget);
+      await tester.ensureVisible(find.text('Income'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Income'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('save-gcash')));
       await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('Received in GCash'), findsOneWidget);
       final more = find.byKey(const ValueKey('more-wallets'));
       expect(tester.getSize(more).height, greaterThanOrEqualTo(48));
+      await tester.ensureVisible(more);
+      await tester.pumpAndSettle();
       await tester.tap(more);
       await tester.pumpAndSettle();
       final choice = find.byKey(const ValueKey('wallet-choice-fixture_maya'));

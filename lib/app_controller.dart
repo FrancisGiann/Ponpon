@@ -8,6 +8,8 @@ import 'data/native_bridge.dart';
 import 'data/storage.dart';
 import 'domain/ledger.dart';
 
+part 'app_features.dart';
+
 class AppController extends ChangeNotifier {
   AppController({required this.store, this.bridge, DateTime Function()? clock})
     : clock = clock ?? DateTime.now;
@@ -46,6 +48,17 @@ class AppController extends ChangeNotifier {
     } on LedgerException catch (e) {
       notice = e.message;
     }
+    if (draft?.kind == EntryKind.income &&
+        draft?.editingId == null &&
+        !ledger
+            .categoriesFor(EntryKind.income)
+            .any((c) => c.id == draft!.categoryId)) {
+      draft!.categoryId = ledger
+          .categoriesFor(EntryKind.income)
+          .firstOrNull
+          ?.id;
+      updateDraft();
+    }
     await recordAllowances();
     await _sync();
     notifyListeners();
@@ -70,17 +83,24 @@ class AppController extends ChangeNotifier {
     try {
       await bridge?.sync(ledger);
     } catch (_) {
-      notice ??= 'Your entry is saved. The home widget could not refresh; reopen the app to retry.';
+      notice ??= 'Your records are saved. Widgets or reminders could not refresh; reopen the app to retry.';
     }
   }
 
   void startDraft({String? categoryId, Entry? editing}) {
     if (draft != null && draft!.dirty && editing == null) return;
+    final requestedCategory = categoryId == null
+        ? null
+        : [
+            ...ledger.categoriesFor(EntryKind.expense),
+            ...ledger.categoriesFor(EntryKind.income),
+          ].where((c) => c.id == categoryId).firstOrNull;
     draft = editing == null
         ? Draft(
-            categoryId: ledger.category(categoryId)?.archived == false
-                ? categoryId
-                : null,
+            kind: requestedCategory?.isIncome == true
+                ? EntryKind.income
+                : EntryKind.expense,
+            categoryId: requestedCategory != null ? categoryId : null,
             date: dayKey(clock()),
           )
         : Draft.fromEntry(editing);
@@ -88,6 +108,14 @@ class AppController extends ChangeNotifier {
       notice = 'That category changed. Choose an available category.';
     }
     updateDraft();
+  }
+
+  void changeDraftKind(EntryKind kind) {
+    if (draft == null || draft!.kind == kind) return;
+    draft!.kind = kind;
+    draft!.categoryId = kind == EntryKind.income
+        ? ledger.categoriesFor(kind).firstOrNull?.id
+        : null;
   }
 
   void updateDraft() {
@@ -157,17 +185,31 @@ class AppController extends ChangeNotifier {
     if (busy || draft == null) return false;
     final current = draft!;
     Entry next;
+    Category? selected;
     try {
       final cents = parseMoney(current.amount);
-      if (current.kind != EntryKind.transfer &&
-          (current.categoryId == null ||
-              ledger.category(current.categoryId)?.archived != false)) {
-        throw const LedgerException('Choose a category before saving.');
-      }
-      final now = clock().millisecondsSinceEpoch;
       final before = current.editingId == null
           ? null
           : ledger.entry(current.editingId!);
+      if (before?.adjustment != null) {
+        throw const LedgerException(
+          'Use a new balance check to change an adjustment.',
+        );
+      }
+      selected = ledger
+          .categoriesFor(current.kind)
+          .where((c) => c.id == current.categoryId)
+          .firstOrNull;
+      // A legacy record with a cross-type category can be edited without
+      // silently recategorizing its history. A type/category change must match.
+      final retained =
+          before != null &&
+          before.kind == current.kind &&
+          before.categoryId == current.categoryId;
+      if (current.kind != EntryKind.transfer && selected == null && !retained) {
+        throw const LedgerException('Choose a category before saving.');
+      }
+      final now = clock().millisecondsSinceEpoch;
       next = Entry(
         id: current.id,
         kind: current.kind,
@@ -183,6 +225,8 @@ class AppController extends ChangeNotifier {
         updatedAt: max(now, before?.updatedAt ?? 0),
         scheduleId: before?.scheduleId,
         occurrenceDate: before?.occurrenceDate,
+        billId: before?.billId,
+        billDueDate: before?.billDueDate,
       );
     } on LedgerException catch (e) {
       storageError = e.message;
@@ -191,9 +235,20 @@ class AppController extends ChangeNotifier {
     }
     // commit marks busy synchronously, so a second tap cannot reach another write.
     final result = await commit(
-      (l) => l
-          .put(next, editing: current.editingId != null)
-          .copy(preferences: l.preferences.copy(welcomed: true)),
+      (l) {
+        var prepared = l;
+        if (selected != null && l.category(selected.id) == null) {
+          if (l.categories.length >= 100) {
+            throw const LedgerException(
+              'Keep up to 100 categories. Use an existing category before adding another.',
+            );
+          }
+          prepared = l.copy(categories: [...l.categories, selected]);
+        }
+        return prepared
+            .put(next, editing: current.editingId != null)
+            .copy(preferences: l.preferences.copy(welcomed: true));
+      },
       message: current.editingId != null
           ? 'Entry updated'
           : current.kind == EntryKind.transfer
@@ -229,8 +284,20 @@ class AppController extends ChangeNotifier {
     message: 'Entry restored',
     undo: true,
   );
-  Future<bool> preferences(Preferences value) =>
-      commit((l) => l.copy(preferences: value));
+  Future<bool> preferences(Preferences value) => commit((l) {
+    final needsSchool =
+        value.widgetCategories.contains(schoolSuppliesCategory.id) &&
+        l.category(schoolSuppliesCategory.id) == null;
+    if (needsSchool && l.categories.length >= 100) {
+      throw const LedgerException(
+        'Keep up to 100 categories. Use an existing category before adding another.',
+      );
+    }
+    return l.copy(
+      categories: [...l.categories, if (needsSchool) schoolSuppliesCategory],
+      preferences: value,
+    );
+  });
   Future<bool> setBudget(String month, int cents) => commit(
     (l) => l.copy(budgets: {...l.budgets, month: cents}),
     message: 'Monthly budget updated',
@@ -260,15 +327,14 @@ class AppController extends ChangeNotifier {
         'Use a distinct wallet name so every choice is clear.',
       );
     }
-    if (wallets.length > 20 || !wallets.any((w) => !w.archived)) {
+    if (wallets.length > 20) {
       throw const LedgerException(
-        'Keep at least one active wallet, up to twenty wallets.',
+        'Keep up to twenty wallets, including archived and removed wallets.',
       );
     }
-    var pins = l.preferences.quickWallets
+    final pins = l.preferences.quickWallets
         .where((id) => wallets.any((w) => w.id == id && !w.archived))
         .toList();
-    if (pins.isEmpty) pins = [wallets.firstWhere((w) => !w.archived).id];
     return l.copy(
       wallets: wallets,
       openings: {...l.openings, if (l.wallet(value) == null) value: 0},
@@ -276,16 +342,59 @@ class AppController extends ChangeNotifier {
     );
   }, message: 'Wallet updated');
 
-  Future<bool> pinWallet(Wallet wallet, bool pinned) => commit((l) {
-    final ids = [...l.preferences.quickWallets]..remove(wallet.id);
-    if (pinned) ids.add(wallet.id);
-    if (ids.isEmpty || ids.length > 2) {
+  Future<bool> removeWallet(
+    Wallet wallet, {
+    bool pauseAllowance = false,
+  }) => commit((l) {
+    final current = l.wallet(wallet);
+    if (current == null || current.archived) {
       throw const LedgerException(
-        'Pin one or two active wallets for direct entry.',
+        'This wallet is already hidden. Restore it from Hidden wallets.',
       );
     }
-    return l.copy(preferences: l.preferences.copy(quickWallets: ids));
-  });
+    final usesAllowance = l.allowance?.wallet == wallet && l.allowance!.enabled;
+    if (usesAllowance && !pauseAllowance) {
+      throw const LedgerException(
+        'Choose whether to pause this wallet’s allowance before removing it.',
+      );
+    }
+    return l.copy(
+      wallets: [
+        for (final w in l.wallets)
+          w == wallet
+              ? w.copy(archived: true, removed: !l.hasWalletHistory(w))
+              : w,
+      ],
+      preferences: l.preferences.copy(
+        quickWallets: l.preferences.quickWallets
+            .where((id) => id != wallet.id)
+            .toList(),
+      ),
+      allowance: usesAllowance
+          ? l.allowance!.copy(enabled: false)
+          : l.allowance,
+    );
+  }, message: 'Wallet hidden · restore in Hidden wallets');
+
+  Future<bool> restoreWallet(Wallet wallet) {
+    final current = ledger.wallet(wallet);
+    if (current == null) return Future.value(false);
+    return setWallet(current.copy(archived: false, removed: false));
+  }
+
+  Future<bool> setQuickWallets(List<String> selected) {
+    // Copy the caller's list before the asynchronous commit. Only appearance
+    // preferences change; choosing buttons never records a financial entry.
+    final ids = List<String>.unmodifiable(selected);
+    return commit((l) {
+      if (ids.length > 20 ||
+          ids.toSet().length != ids.length ||
+          ids.any((id) => !l.availableWallets.any((w) => w.id == id))) {
+        throw const LedgerException('Choose each active wallet at most once.');
+      }
+      return l.copy(preferences: l.preferences.copy(quickWallets: ids));
+    });
+  }
 
   Future<bool> recordAllowances() async {
     if (busy) return false;
@@ -332,6 +441,12 @@ class AppController extends ChangeNotifier {
     final settled = old?.enabled == true
         ? catchUpAllowance(l, clock()).ledger
         : l;
+    final candidateCursor = old?.enabled == true ? today : previousDay(today);
+    final cursor = [
+      candidateCursor,
+      if (old != null) old.processedThrough,
+      if (settled.allowance != null) settled.allowance!.processedThrough,
+    ].reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
     final rule = AllowanceSchedule(
       id: old?.id ?? newId(),
       centavos: centavos,
@@ -339,7 +454,7 @@ class AppController extends ChangeNotifier {
       days: days,
       startDate: startDate,
       enabled: enabled,
-      processedThrough: old?.enabled == true ? today : previousDay(today),
+      processedThrough: cursor,
     );
     AllowanceSchedule.fromJson(rule.toJson());
     return catchUpAllowance(settled.copy(allowance: rule), clock()).ledger;

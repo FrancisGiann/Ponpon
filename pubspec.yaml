@@ -1,7 +1,7 @@
 name: pocket_entry
-description: A private offline Cash and GCash ledger with fast explicit wallet entry.
+description: Ponpon Budget & Expenses, a private offline ledger with explicit wallet entry.
 publish_to: none
-version: 0.2.0+2
+version: 0.2.7+9
 environment:
   sdk: '>=3.13.0 <4.0.0'
 dependencies:
@@ -14,6 +14,8 @@ dev_dependencies:
   flutter_lints: 6.0.0
 flutter:
   uses-material-design: false
+  assets:
+    - assets/branding/ponpon-icon.png
   fonts:
     - family: Inter
       fonts:

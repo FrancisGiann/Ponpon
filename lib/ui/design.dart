@@ -85,6 +85,7 @@ IconData categoryIcon(String? icon) => switch (icon) {
   'health' => CupertinoIcons.heart,
   'fun' => CupertinoIcons.ticket,
   'home' => CupertinoIcons.house,
+  'school' => CupertinoIcons.book,
   'income' => CupertinoIcons.arrow_down_left,
   _ => CupertinoIcons.square_grid_2x2,
 };
@@ -112,7 +113,7 @@ Color categoryColor(BuildContext context, String? icon) {
   final p = Palette.of(context);
   return switch (icon) {
     'food' || 'home' => p.accent,
-    'travel' => p.blue,
+    'travel' || 'school' => p.blue,
     'bills' || 'shopping' => p.amber,
     'health' || 'income' => p.green,
     'fun' => p.danger,
@@ -257,6 +258,7 @@ Future<Wallet?> chooseWallet(
   BuildContext context,
   List<Wallet> wallets, {
   required String title,
+  VoidCallback? manageButtons,
 }) => showPocketSheet<Wallet>(
   context: context,
   builder: (ctx) => SheetFrame(
@@ -268,6 +270,38 @@ Future<Wallet?> chooseWallet(
       shrinkWrap: true,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
       children: [
+        if (manageButtons != null) ...[
+          Press(
+            key: const ValueKey('manage-direct-buttons'),
+            color: Palette.of(ctx).surface,
+            onPressed: () {
+              Navigator.pop(ctx);
+              manageButtons();
+            },
+            child: Row(
+              children: [
+                Icon(
+                  CupertinoIcons.square_grid_2x2,
+                  color: Palette.of(ctx).accent,
+                  size: 21,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Edit direct entry buttons',
+                    style: textStyle(ctx, size: 15, weight: FontWeight.w600),
+                  ),
+                ),
+                Icon(
+                  CupertinoIcons.chevron_right,
+                  color: Palette.of(ctx).secondary,
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         Surface(
           padding: EdgeInsets.zero,
           child: Column(
@@ -345,10 +379,16 @@ class _PressState extends State<Press> {
     final reduced = MotionScope.of(context);
     final interactive = Listener(
       onPointerDown: (_) {
-        if (widget.onPressed != null) setState(() => pressed = true);
+        if (mounted && widget.onPressed != null) {
+          setState(() => pressed = true);
+        }
       },
-      onPointerUp: (_) => setState(() => pressed = false),
-      onPointerCancel: (_) => setState(() => pressed = false),
+      onPointerUp: (_) {
+        if (mounted) setState(() => pressed = false);
+      },
+      onPointerCancel: (_) {
+        if (mounted) setState(() => pressed = false);
+      },
       child: AnimatedScale(
         scale: pressed && !reduced ? .975 : 1,
         duration: Duration(milliseconds: reduced ? 0 : (pressed ? 90 : 260)),
@@ -803,7 +843,9 @@ class EntryRow extends StatelessWidget {
     final p = Palette.of(context);
     final category = ledger.category(entry.categoryId);
     final transfer = entry.kind == EntryKind.transfer;
-    final title = transfer
+    final title = entry.adjustment != null
+        ? 'Balance adjustment'
+        : transfer
         ? '${ledger.wallet(entry.wallet)!.label} → ${ledger.wallet(entry.toWallet)!.label}'
         : category?.name ?? 'Category';
     final amount =
@@ -834,7 +876,9 @@ class EntryRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(
-              transfer
+              entry.adjustment != null
+                  ? CupertinoIcons.money_dollar_circle
+                  : transfer
                   ? CupertinoIcons.arrow_right_arrow_left
                   : categoryIcon(category?.icon),
               size: 21,

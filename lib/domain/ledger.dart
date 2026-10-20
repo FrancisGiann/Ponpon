@@ -3,8 +3,9 @@ import 'dart:math';
 
 part 'wallet.dart';
 part 'allowance.dart';
+part 'bills.dart';
 
-const schemaVersion = 3;
+const schemaVersion = 5;
 const _keepAllowance = Object();
 const maxCentavos = 99999999999;
 const maxBackupBytes = 5 * 1024 * 1024;
@@ -158,6 +159,9 @@ class Category {
   final String name;
   final String icon;
   final bool archived;
+  // Existing category IDs and records stay intact. The income pictogram also
+  // classifies user-created income categories without a backup schema change.
+  bool get isIncome => id == 'income' || icon == 'income';
   Category copy({String? name, String? icon, bool? archived}) => Category(
     id: id,
     name: name ?? this.name,
@@ -197,6 +201,19 @@ const categoryIcons = [
   'home',
   'income',
   'other',
+  'school',
+];
+const schoolSuppliesCategory = Category(
+  id: 'school_supplies',
+  name: 'School supplies',
+  icon: 'school',
+);
+const defaultIncomeCategories = [
+  Category(id: 'income', name: 'General income', icon: 'income'),
+  Category(id: 'income_allowance', name: 'Allowance', icon: 'income'),
+  Category(id: 'income_salary', name: 'Salary', icon: 'income'),
+  Category(id: 'income_gift', name: 'Gift', icon: 'income'),
+  Category(id: 'income_other', name: 'Other income', icon: 'income'),
 ];
 const defaultCategories = [
   Category(id: 'food', name: 'Food', icon: 'food'),
@@ -205,9 +222,25 @@ const defaultCategories = [
   Category(id: 'shopping', name: 'Shopping', icon: 'shopping'),
   Category(id: 'health', name: 'Health', icon: 'health'),
   Category(id: 'fun', name: 'Leisure', icon: 'fun'),
-  Category(id: 'income', name: 'Income', icon: 'income'),
+  ...defaultIncomeCategories,
+  schoolSuppliesCategory,
   Category(id: 'other', name: 'Other', icon: 'other'),
 ];
+
+// Stable display-only partition: preserve every other category's relative order.
+// Match identity/type so renamed Other stays last and income choices stay intact.
+List<T> otherExpenseLast<T>(
+  Iterable<T> items,
+  Category Function(T) categoryOf,
+) {
+  final values = items.toList();
+  bool isOther(T item) {
+    final category = categoryOf(item);
+    return category.id == 'other' && !category.isIncome;
+  }
+
+  return [...values.where((item) => !isOther(item)), ...values.where(isOther)];
+}
 
 class Entry {
   const Entry({
@@ -224,6 +257,9 @@ class Entry {
     this.deletedAt,
     this.scheduleId,
     this.occurrenceDate,
+    this.billId,
+    this.billDueDate,
+    this.adjustment,
   });
   final String id;
   final EntryKind kind;
@@ -237,6 +273,8 @@ class Entry {
   final int updatedAt;
   final int? deletedAt;
   final String? scheduleId, occurrenceDate;
+  final String? billId, billDueDate;
+  final BalanceAdjustment? adjustment;
   bool get deleted => deletedAt != null;
   Entry withDeletion(int? timestamp) => Entry(
     id: id,
@@ -252,6 +290,9 @@ class Entry {
     deletedAt: timestamp,
     scheduleId: scheduleId,
     occurrenceDate: occurrenceDate,
+    billId: billId,
+    billDueDate: billDueDate,
+    adjustment: adjustment,
   );
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -267,6 +308,9 @@ class Entry {
     'deletedAt': deletedAt,
     'scheduleId': scheduleId,
     'occurrenceDate': occurrenceDate,
+    if (billId != null) 'billId': billId,
+    if (billDueDate != null) 'billDueDate': billDueDate,
+    if (adjustment != null) 'adjustment': adjustment!.toJson(),
   };
   factory Entry.fromJson(dynamic value) {
     final map = object(value);
@@ -286,9 +330,16 @@ class Entry {
     final category = map['categoryId'] == null
         ? null
         : idField(map, 'categoryId');
+    final adjustment = map['adjustment'] == null
+        ? null
+        : BalanceAdjustment.fromJson(map['adjustment']);
     if (kind == EntryKind.transfer
-        ? (toWallet == null || wallet == toWallet || category != null)
-        : (toWallet != null || category == null)) {
+        ? (toWallet == null ||
+              wallet == toWallet ||
+              category != null ||
+              adjustment != null)
+        : (toWallet != null ||
+              (adjustment == null ? category == null : category != null))) {
       throw const LedgerException(
         'A transaction has invalid category or transfer wallets.',
       );
@@ -316,7 +367,36 @@ class Entry {
         );
       }
     }
+    final billId = map['billId'] == null ? null : idField(map, 'billId');
+    final billDate = map['billDueDate'] == null
+        ? null
+        : stringField(map, 'billDueDate', max: 10);
+    if ((billId == null) != (billDate == null)) {
+      throw const LedgerException('A bill payment origin is invalid.');
+    }
+    if (billId != null) {
+      localDay(billDate!);
+      if (billId.length > 32 ||
+          kind != EntryKind.expense ||
+          adjustment != null ||
+          origin != null ||
+          map['id'] != 'bill_${billId}_${billDate.replaceAll('-', '')}') {
+        throw const LedgerException('A bill payment identifier is invalid.');
+      }
+    }
+    if (adjustment != null &&
+        (origin != null ||
+            intField(map, 'centavos', min: 1) != adjustment.difference.abs() ||
+            kind !=
+                (adjustment.difference > 0
+                    ? EntryKind.income
+                    : EntryKind.expense))) {
+      throw const LedgerException('A balance adjustment is inconsistent.');
+    }
     return Entry(
+      billId: billId,
+      billDueDate: billDate,
+      adjustment: adjustment,
       scheduleId: origin,
       occurrenceDate: occurrence,
       id: idField(map, 'id'),
@@ -343,6 +423,7 @@ class Preferences {
     this.reduceMotion = false,
     this.haptics = true,
     this.privatePreview = true,
+    this.balanceWidgetVisible = false,
     this.widgetCategories = const ['food', 'travel', 'bills', 'shopping'],
     this.quickWallets = const ['cash', 'gcash'],
   });
@@ -351,6 +432,7 @@ class Preferences {
   final bool reduceMotion;
   final bool haptics;
   final bool privatePreview;
+  final bool balanceWidgetVisible;
   final List<String> widgetCategories, quickWallets;
   Preferences copy({
     bool? welcomed,
@@ -358,6 +440,7 @@ class Preferences {
     bool? reduceMotion,
     bool? haptics,
     bool? privatePreview,
+    bool? balanceWidgetVisible,
     List<String>? widgetCategories,
     List<String>? quickWallets,
   }) => Preferences(
@@ -366,6 +449,7 @@ class Preferences {
     reduceMotion: reduceMotion ?? this.reduceMotion,
     haptics: haptics ?? this.haptics,
     privatePreview: privatePreview ?? this.privatePreview,
+    balanceWidgetVisible: balanceWidgetVisible ?? this.balanceWidgetVisible,
     quickWallets: List.unmodifiable(quickWallets ?? this.quickWallets),
     widgetCategories: List.unmodifiable(
       widgetCategories ?? this.widgetCategories,
@@ -377,6 +461,7 @@ class Preferences {
     'reduceMotion': reduceMotion,
     'haptics': haptics,
     'privatePreview': privatePreview,
+    'balanceWidgetVisible': balanceWidgetVisible,
     'widgetCategories': widgetCategories,
     'quickWallets': quickWallets,
   };
@@ -395,8 +480,7 @@ class Preferences {
     }
     final quick = map['quickWallets'] ?? ['cash', 'gcash'];
     if (quick is! List ||
-        quick.isEmpty ||
-        quick.length > 2 ||
+        quick.length > 20 ||
         quick.any((id) => id is! String) ||
         quick.toSet().length != quick.length) {
       throw const LedgerException('The preferred wallets are invalid.');
@@ -408,6 +492,11 @@ class Preferences {
       reduceMotion: boolField(map, 'reduceMotion'),
       haptics: boolField(map, 'haptics', fallback: true),
       privatePreview: boolField(map, 'privatePreview', fallback: true),
+      balanceWidgetVisible: boolField(
+        map,
+        'balanceWidgetVisible',
+        fallback: false,
+      ),
       widgetCategories: List<String>.unmodifiable(ids),
     );
   }
@@ -441,10 +530,12 @@ class WalletCalculation {
     this.income,
     this.expenses,
     this.incoming,
-    this.outgoing,
-  );
-  final int opening, income, expenses, incoming, outgoing;
-  int get balance => opening + income - expenses + incoming - outgoing;
+    this.outgoing, [
+    this.adjustments = 0,
+  ]);
+  final int opening, income, expenses, incoming, outgoing, adjustments;
+  int get balance =>
+      opening + income - expenses + incoming - outgoing + adjustments;
 }
 
 class Ledger {
@@ -456,6 +547,7 @@ class Ledger {
     Preferences? preferences,
     List<Change> changes = const [],
     List<Wallet> wallets = Wallet.values,
+    List<Bill> bills = const [],
     this.allowance,
   }) : categories = List.unmodifiable(categories),
        entries = List.unmodifiable(entries),
@@ -463,7 +555,8 @@ class Ledger {
        budgets = Map.unmodifiable(budgets),
        preferences = preferences ?? const Preferences(),
        changes = List.unmodifiable(changes),
-       wallets = List.unmodifiable(wallets);
+       wallets = List.unmodifiable(wallets),
+       bills = List.unmodifiable(bills);
   factory Ledger.empty() => Ledger(
     categories: defaultCategories,
     entries: [],
@@ -478,6 +571,21 @@ class Ledger {
   final List<Change> changes;
   final List<Wallet> wallets;
   final AllowanceSchedule? allowance;
+  final List<Bill> bills;
+  Bill? bill(String id) => bills.where((b) => b.id == id).firstOrNull;
+  late final Map<String, Set<String>> _paidBillDates = () {
+    final dates = <String, Set<String>>{};
+    for (final entry in active) {
+      if (entry.billId != null && entry.billDueDate != null) {
+        dates
+            .putIfAbsent(entry.billId!, () => <String>{})
+            .add(entry.billDueDate!);
+      }
+    }
+    return dates;
+  }();
+  Set<String> billPaidDates(String id) =>
+      Set.unmodifiable(_paidBillDates[id] ?? const <String>{});
   // Ledger snapshots are immutable. Derived indexes belong to one snapshot and
   // disappear naturally when an edit/restore creates its replacement.
   late final Map<String, Wallet> _walletIndex = {
@@ -490,8 +598,23 @@ class Ledger {
     for (final e in entries) e.id: e,
   };
   Wallet? wallet(Wallet? ref) => _walletIndex[ref?.id];
+  bool hasWalletHistory(Wallet wallet) =>
+      (openings[wallet] ?? 0) != 0 ||
+      allowance?.wallet == wallet ||
+      entries.any((e) => e.wallet == wallet || e.toWallet == wallet) ||
+      changes.any(
+        (c) =>
+            c.after.wallet == wallet ||
+            c.after.toWallet == wallet ||
+            c.before?.wallet == wallet ||
+            c.before?.toWallet == wallet,
+      );
   late final List<Wallet> availableWallets = List.unmodifiable(
     wallets.where((w) => !w.archived),
+  );
+  late final int activeWalletBalance = availableWallets.fold(
+    0,
+    (sum, wallet) => sum + calculate(wallet).balance,
   );
   late final List<Wallet> quickWallets = List.unmodifiable(
     preferences.quickWallets
@@ -506,9 +629,34 @@ class Ledger {
     }),
   );
   late final List<Category> availableCategories = List.unmodifiable(
-    categories.where((c) => !c.archived),
+    otherExpenseLast(categories.where((c) => !c.archived), (c) => c),
   );
   Category? category(String? id) => _categoryIndex[id];
+  List<Category> categoriesFor(EntryKind kind) {
+    if (kind == EntryKind.transfer) return const [];
+    if (kind == EntryKind.expense) {
+      return otherExpenseLast([
+        ...availableCategories.where((c) => !c.isIncome),
+        if (category(schoolSuppliesCategory.id) == null) schoolSuppliesCategory,
+      ], (c) => c);
+    }
+    // Missing built-ins are offered to older ledgers and inserted atomically
+    // with a saved entry. Merely changing type never changes ledger history.
+    return [
+      for (final builtin in defaultIncomeCategories)
+        if (category(builtin.id) == null)
+          builtin
+        else if (!category(builtin.id)!.archived &&
+            category(builtin.id)!.isIncome)
+          category(builtin.id)!.name == 'Income' && builtin.id == 'income'
+              ? category(builtin.id)!.copy(name: 'General income')
+              : category(builtin.id)!,
+      ...availableCategories.where(
+        (c) => c.isIncome && !defaultIncomeCategories.any((b) => b.id == c.id),
+      ),
+    ];
+  }
+
   Entry? entry(String id) => _entryIndex[id];
   final Map<Wallet, WalletCalculation> _walletCalculations = {};
   final Map<(EntryKind, String?, String?, String?), int> _totals = {};
@@ -520,6 +668,7 @@ class Ledger {
     Preferences? preferences,
     List<Change>? changes,
     List<Wallet>? wallets,
+    List<Bill>? bills,
     Object? allowance = _keepAllowance,
   }) => Ledger(
     categories: categories ?? this.categories,
@@ -529,33 +678,39 @@ class Ledger {
     preferences: preferences ?? this.preferences,
     changes: changes ?? this.changes,
     wallets: wallets ?? this.wallets,
+    bills: bills ?? this.bills,
     allowance: identical(allowance, _keepAllowance)
         ? this.allowance
         : allowance as AllowanceSchedule?,
   );
-  WalletCalculation calculate(Wallet wallet) =>
-      _walletCalculations.putIfAbsent(wallet, () {
-        var income = 0, expenses = 0, incoming = 0, outgoing = 0;
-        for (final e in entries.where((e) => !e.deleted)) {
-          if (e.kind == EntryKind.transfer) {
-            if (e.wallet == wallet) outgoing += e.centavos;
-            if (e.toWallet == wallet) incoming += e.centavos;
-          } else if (e.wallet == wallet) {
-            if (e.kind == EntryKind.income) {
-              income += e.centavos;
-            } else {
-              expenses += e.centavos;
-            }
+  WalletCalculation calculate(Wallet wallet) => _walletCalculations.putIfAbsent(
+    wallet,
+    () {
+      var income = 0, expenses = 0, incoming = 0, outgoing = 0, adjustments = 0;
+      for (final e in entries.where((e) => !e.deleted)) {
+        if (e.adjustment != null) {
+          if (e.wallet == wallet) adjustments += e.adjustment!.difference;
+        } else if (e.kind == EntryKind.transfer) {
+          if (e.wallet == wallet) outgoing += e.centavos;
+          if (e.toWallet == wallet) incoming += e.centavos;
+        } else if (e.wallet == wallet) {
+          if (e.kind == EntryKind.income) {
+            income += e.centavos;
+          } else {
+            expenses += e.centavos;
           }
         }
-        return WalletCalculation(
-          openings[wallet] ?? 0,
-          income,
-          expenses,
-          incoming,
-          outgoing,
-        );
-      });
+      }
+      return WalletCalculation(
+        openings[wallet] ?? 0,
+        income,
+        expenses,
+        incoming,
+        outgoing,
+        adjustments,
+      );
+    },
+  );
 
   int total(EntryKind kind, {String? month, String? date, String? categoryId}) {
     if (_totals.length >= 512) _totals.clear();
@@ -565,6 +720,7 @@ class Ledger {
           .where(
             (e) =>
                 !e.deleted &&
+                e.adjustment == null &&
                 e.kind == kind &&
                 (month == null || e.date.startsWith(month)) &&
                 (date == null || e.date == date) &&
@@ -574,7 +730,11 @@ class Ledger {
     );
   }
 
-  Ledger put(Entry next, {bool editing = false}) {
+  Ledger put(
+    Entry next, {
+    bool editing = false,
+    bool restoringPayment = false,
+  }) {
     Entry.fromJson(next.toJson());
     final previous = entry(next.id);
     final retainsWallets =
@@ -591,7 +751,17 @@ class Ledger {
                     wallet(next.toWallet)?.archived != false))) {
       throw const LedgerException('Choose active wallets before saving.');
     }
-    if (previous != null && !editing) {
+    if (restoringPayment &&
+        (previous == null ||
+            !previous.deleted ||
+            next.billId == null ||
+            previous.billId != next.billId ||
+            previous.billDueDate != next.billDueDate)) {
+      throw const LedgerException(
+        'This bill payment cannot be recorded again.',
+      );
+    }
+    if (previous != null && !editing && !restoringPayment) {
       if (sameEntry(previous, next)) return this;
       throw const LedgerException(
         'This entry was already saved. Open History to edit it.',
@@ -651,6 +821,9 @@ class Ledger {
       updatedAt: max(now, before.updatedAt),
       scheduleId: before.scheduleId,
       occurrenceDate: before.occurrenceDate,
+      billId: before.billId,
+      billDueDate: before.billDueDate,
+      adjustment: before.adjustment,
     );
     return copy(
       entries: [
@@ -694,6 +867,7 @@ class Ledger {
     'entries': entries.map((e) => e.toJson()).toList(),
     'wallets': wallets.map((w) => w.toJson()).toList(),
     'allowance': allowance?.toJson(),
+    'bills': bills.map((b) => b.toJson()).toList(),
     'openings': {for (final w in wallets) w.name: openings[w] ?? 0},
     'budgets': budgets,
     'preferences': preferences.toJson(),
@@ -702,21 +876,19 @@ class Ledger {
   String encode() => jsonEncode(toJson());
   factory Ledger.decode(String text) {
     if (utf8.encode(text).length > maxBackupBytes) {
-      throw const LedgerException(
-        'Choose a Pocket Entry backup smaller than 5 MB.',
-      );
+      throw const LedgerException('Choose a Ponpon backup smaller than 5 MB.');
     }
     dynamic decoded;
     try {
       decoded = jsonDecode(text);
     } on FormatException {
       throw const LedgerException(
-        'This file is not valid JSON. Choose a Pocket Entry backup.',
+        'This file is not valid JSON. Choose a Ponpon backup.',
       );
     }
     var map = object(decoded);
     if (map['application'] != 'pocket_entry' || map['currency'] != 'PHP') {
-      throw const LedgerException('Choose a PHP backup made by Pocket Entry.');
+      throw const LedgerException('Choose a PHP backup made by Ponpon.');
     }
     final version = map['schemaVersion'];
     if (version is! int) {
@@ -725,7 +897,7 @@ class Ledger {
     if (version == 1) map = migrateV1(map);
     if (version == 1 || version == 2) {
       map = migrateV2(map);
-    } else if (version != schemaVersion) {
+    } else if (version != 3 && version != 4 && version != schemaVersion) {
       throw const LedgerException(
         'This backup version is not supported. Your current data is unchanged.',
       );
@@ -740,8 +912,7 @@ class Ledger {
         wallets.length) {
       throw const LedgerException('Wallet names must be distinct.');
     }
-    if (walletIds.length != wallets.length ||
-        !wallets.any((w) => !w.archived)) {
+    if (walletIds.length != wallets.length) {
       throw const LedgerException(
         'Wallet identifiers or active wallets are invalid.',
       );
@@ -771,6 +942,14 @@ class Ledger {
         'The backup has invalid or excessive records.',
       );
     }
+    final rawBills = map['bills'] ?? <dynamic>[];
+    if (rawBills is! List || rawBills.length > 100) {
+      throw const LedgerException('Keep up to 100 bills.');
+    }
+    final bills = rawBills.map(Bill.fromJson).toList();
+    if (bills.map((b) => b.id).toSet().length != bills.length) {
+      throw const LedgerException('The backup contains duplicate bills.');
+    }
     final categories = rawCategories.map(Category.fromJson).toList();
     final entries = rawEntries.map(Entry.fromJson).toList();
     final changes = rawChanges.map(Change.fromJson).toList();
@@ -791,6 +970,14 @@ class Ledger {
         throw const LedgerException(
           'A transaction references a missing wallet.',
         );
+      }
+      if (e.billId != null) {
+        final origin = bills.where((b) => b.id == e.billId).firstOrNull;
+        if (origin == null || !origin.containsDue(e.billDueDate!)) {
+          throw const LedgerException(
+            'A bill payment origin is missing or invalid.',
+          );
+        }
       }
       if (e.scheduleId != null && e.scheduleId != allowance?.id) {
         throw const LedgerException('An allowance origin is missing.');
@@ -838,6 +1025,7 @@ class Ledger {
     return Ledger(
       wallets: wallets,
       allowance: allowance,
+      bills: bills,
       categories: categories,
       entries: entries,
       openings: openings,
@@ -892,22 +1080,36 @@ class RestorePreview {
 }
 
 RestorePreview previewRestore(Ledger current, Ledger imported) {
+  final currentCategories = jsonEncode(
+    current.categories.map((c) => c.toJson()).toList(),
+  );
+  final defaultCategorySets = [
+    jsonEncode(defaultCategories.map((c) => c.toJson()).toList()),
+    jsonEncode(
+      defaultCategories
+          .where((c) => c.id != schoolSuppliesCategory.id)
+          .map((c) => c.toJson())
+          .toList(),
+    ),
+  ];
   final pristine =
       current.entries.isEmpty &&
       current.allowance == null &&
+      current.bills.isEmpty &&
       jsonEncode(current.wallets.map((w) => w.toJson()).toList()) ==
           jsonEncode(Wallet.values.map((w) => w.toJson()).toList()) &&
       current.budgets.isEmpty &&
       current.openings.values.every((v) => v == 0) &&
-      jsonEncode(current.categories.map((c) => c.toJson()).toList()) ==
-          jsonEncode(defaultCategories.map((c) => c.toJson()).toList());
+      defaultCategorySets.contains(currentCategories);
   if (pristine) {
     return RestorePreview(
       ledger: imported.copy(
         preferences: imported.preferences.copy(
           welcomed: current.preferences.welcomed,
+          balanceWidgetVisible: current.preferences.balanceWidgetVisible,
         ),
         allowance: imported.allowance?.copy(enabled: false),
+        bills: imported.bills.map((b) => b.copy(remind: false)).toList(),
         changes: imported.changes,
       ),
       added: imported.entries.length,
@@ -966,6 +1168,18 @@ RestorePreview previewRestore(Ledger current, Ledger imported) {
       );
     }
   }
+  final bills = [...current.bills];
+  for (final bill in imported.bills) {
+    final existing = current.bill(bill.id);
+    if (existing == null) {
+      bills.add(bill.copy(remind: false));
+    } else if (jsonEncode(existing.copy(remind: false).toJson()) !=
+        jsonEncode(bill.copy(remind: false).toJson())) {
+      throw const LedgerException(
+        'Bill schedules differ. Nothing has been restored.',
+      );
+    }
+  }
   final budgets = {...current.budgets};
   for (final item in imported.budgets.entries) {
     if (budgets.containsKey(item.key) && budgets[item.key] != item.value) {
@@ -982,6 +1196,7 @@ RestorePreview previewRestore(Ledger current, Ledger imported) {
     wallets: wallets,
     openings: openings,
     allowance: allowance,
+    bills: bills,
   );
   Ledger.decode(merged.encode());
   return RestorePreview(

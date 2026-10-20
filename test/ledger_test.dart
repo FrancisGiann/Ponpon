@@ -181,7 +181,7 @@ void main() {
       (rows[0] as Map).remove('deletedAt');
       final migrated = Ledger.decode(jsonEncode(old));
       expect(migrated.entry('one')!.updatedAt, 1000);
-      expect(migrated.toJson()['schemaVersion'], 3);
+      expect(migrated.toJson()['schemaVersion'], schemaVersion);
       expect(migrated.total(EntryKind.expense), 1501);
       expect(Ledger.decode(migrated.encode()).encode(), migrated.encode());
     },

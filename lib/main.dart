@@ -58,7 +58,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          error = 'Your saved ledger could not be opened. Your files are preserved. Retry, or restore a Pocket Entry backup.';
+          error = 'Your saved ledger could not be opened. Your files are preserved. Retry, or restore a Ponpon backup.';
           loading = false;
         });
       }
@@ -69,12 +69,17 @@ class _BootstrapAppState extends State<BootstrapApp> {
     try {
       final chosen = await bridge.pickBackup();
       if (chosen == null || !mounted || !dialogContext.mounted) return;
-      final ledger = Ledger.decode(chosen);
+      final imported = Ledger.decode(chosen);
+      final ledger = imported.copy(
+        preferences: imported.preferences.copy(balanceWidgetVisible: false),
+        allowance: imported.allowance?.copy(enabled: false),
+        bills: imported.bills.map((b) => b.copy(remind: false)).toList(),
+      );
       final approved = await confirm(
         dialogContext,
         title: 'Restore saved records?',
         message:
-            'This valid backup contains ${ledger.active.length} entries. Unreadable local files will be preserved privately.',
+            'This valid backup contains ${ledger.active.length} entries. Allowance schedules will stay paused for your review. Unreadable local files will be preserved privately.',
         action: 'Restore backup',
       );
       if (!approved) return;
@@ -176,6 +181,21 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
 
   Future<void> quickEntry(Map<dynamic, dynamic> request) async {
     if (!mounted || navigator.currentState == null) return;
+    if (request['bills'] == true) {
+      if (app.entryVisible || quickOpening || app.busy) {
+        app.feedback = 'Finish the current action before opening bills.';
+        app.feedbackUndo = false;
+        app.publish();
+        return;
+      }
+      quickOpening = true;
+      try {
+        await pushPocket<void>(navigator.currentContext!, BillsPage(app: app));
+      } finally {
+        quickOpening = false;
+      }
+      return;
+    }
     final id = request['categoryId'] is String
         ? request['categoryId'] as String
         : null;
@@ -243,7 +263,7 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
       return CupertinoApp(
         navigatorKey: navigator,
         debugShowCheckedModeBanner: false,
-        title: 'Pocket Entry',
+        title: 'Ponpon',
         theme: CupertinoThemeData(
           brightness: brightness,
           primaryColor: p.accent,
@@ -387,6 +407,9 @@ class _FeedbackBannerState extends State<FeedbackBanner> {
                   onPressed: widget.app.busy
                       ? null
                       : () async {
+                          if (widget.app.busy || !widget.app.feedbackUndo) {
+                            return;
+                          }
                           final success = await widget.app.undo();
                           if (success) widget.app.feedbackUndo = false;
                         },

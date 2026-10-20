@@ -1,12 +1,14 @@
 import 'package:flutter/cupertino.dart';
 
 import '../app_controller.dart';
+import '../data/native_bridge.dart';
 import '../domain/ledger.dart';
 import 'design.dart';
 import 'entry_page.dart';
 
 part 'wallet_screens.dart';
 part 'allowance_page.dart';
+part 'bills_balance.dart';
 
 Future<void> openEntry(
   BuildContext context,
@@ -61,24 +63,21 @@ class WelcomePage extends StatelessWidget {
                         child: SingleChildScrollView(
                           child: Column(
                             children: [
-                              Container(
-                                width: largeType ? 56 : 80,
-                                height: largeType ? 56 : 80,
-                                decoration: BoxDecoration(
-                                  color: p.accent,
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                                child: Icon(
-                                  CupertinoIcons.square_pencil,
-                                  color: p.onAccent,
-                                  size: 37,
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: Image.asset(
+                                  'assets/branding/ponpon-icon.png',
+                                  width: largeType ? 56 : 80,
+                                  height: largeType ? 56 : 80,
+                                  cacheWidth: 160,
+                                  semanticLabel: 'Ponpon wallet app icon',
                                 ),
                               ),
                               SizedBox(height: largeType ? 14 : 28),
                               FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
-                                  'Pocket Entry',
+                                  'Ponpon',
                                   textAlign: TextAlign.center,
                                   style: textStyle(
                                     context,
@@ -89,7 +88,7 @@ class WelcomePage extends StatelessWidget {
                               ),
                               const SizedBox(height: 10),
                               Text(
-                                'Little entries. A clearer picture.',
+                                'Budget & Expenses',
                                 textAlign: TextAlign.center,
                                 style: textStyle(
                                   context,
@@ -310,6 +309,21 @@ class TodayPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
               ],
+              HomeBalances(app: app),
+              if (l.bills.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Surface(
+                  padding: EdgeInsets.zero,
+                  child: GroupRow(
+                    'Upcoming bills',
+                    subtitle: 'Review due dates and record payments',
+                    icon: CupertinoIcons.calendar,
+                    last: true,
+                    onTap: () => pushPocket<void>(context, BillsPage(app: app)),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
               PrimaryButton(
                 'Add an entry',
                 icon: CupertinoIcons.plus,
@@ -458,99 +472,6 @@ class TodayPage extends StatelessWidget {
                     ],
                   ),
                 ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Your wallets',
-                      style: textStyle(
-                        context,
-                        size: 20,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Press(
-                    label: 'Manage wallets',
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 10,
-                    ),
-                    onPressed: () =>
-                        pushPocket<void>(context, WalletsPage(app: app)),
-                    child: Text(
-                      'Manage',
-                      style: textStyle(context, size: 14, color: p.accent),
-                    ),
-                  ),
-                ],
-              ),
-              Surface(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: [
-                    for (var i = 0; i < l.quickWallets.length; i++) ...[
-                      Press(
-                        label:
-                            '${l.quickWallets[i].label} tracked balance ${money(l.calculate(l.quickWallets[i]).balance)}',
-                        onPressed: () =>
-                            pushPocket<void>(context, WalletsPage(app: app)),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          children: [
-                            IconTile(
-                              walletIcon(l.quickWallets[i].icon),
-                              color: walletColor(context, l.quickWallets[i]),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                l.quickWallets[i].label,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: textStyle(
-                                  context,
-                                  size: 15,
-                                  weight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  money(l.calculate(l.quickWallets[i]).balance),
-                                  style: textStyle(
-                                    context,
-                                    size: 17,
-                                    weight: FontWeight.w600,
-                                    tabular: true,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (i < l.quickWallets.length - 1)
-                        const Padding(
-                          padding: EdgeInsets.only(left: 66),
-                          child: Rule(),
-                        ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Tracked from your records. Check your actual wallets separately.',
-                style: textStyle(context, size: 12, color: p.secondary),
-              ),
               const SizedBox(height: 28),
               Row(
                 children: [
@@ -631,6 +552,289 @@ class BudgetBar extends StatelessWidget {
   }
 }
 
+class HomeBalances extends StatelessWidget {
+  const HomeBalances({super.key, required this.app});
+  final AppController app;
+  List<Wallet> get displayWallets {
+    final ledger = app.ledger;
+    final active = ledger.availableWallets;
+    return [
+      ...active.where((w) => ledger.calculate(w).balance != 0),
+      ...active.where((w) => ledger.calculate(w).balance == 0),
+    ];
+  }
+
+  Future<void> showWallets(BuildContext context) {
+    final wallets = displayWallets;
+    return showPocketSheet<void>(
+      context: context,
+      builder: (ctx) => SheetFrame(
+        title: 'Your wallets',
+        subtitle: 'Active wallets · balances from manual records',
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          children: [
+            Surface(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  for (var i = 0; i < wallets.length; i++)
+                    HomeWalletBalanceRow(
+                      app: app,
+                      wallet: wallets[i],
+                      actionLabel: 'Manage wallets',
+                      last: i == wallets.length - 1,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        pushPocket<void>(context, WalletsPage(app: app));
+                      },
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            PrimaryButton(
+              'Manage wallets',
+              onPressed: () {
+                Navigator.pop(ctx);
+                pushPocket<void>(context, WalletsPage(app: app));
+              },
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'These are tracked records. Check your actual wallets separately. Hidden wallets are excluded here; their history is kept.',
+              style: textStyle(ctx, size: 13, color: Palette.of(ctx).secondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = app.ledger, p = Palette.of(context), wallets = displayWallets;
+    final large = MediaQuery.textScalerOf(context).scale(1) > 1.25;
+    final visible = wallets
+        .take(wallets.length <= 3 ? 3 : (large ? 1 : 2))
+        .toList();
+    final remaining = wallets.length - visible.length;
+    return Surface(
+      key: const ValueKey('home-balances'),
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 8, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Total tracked balance',
+                    style: textStyle(
+                      context,
+                      size: 16,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Press(
+                  key: const ValueKey('home-view-wallets'),
+                  label: wallets.isEmpty
+                      ? 'Add or restore wallets'
+                      : 'View all ${wallets.length} active wallet balances. $remaining more wallets beyond this preview.',
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 12,
+                  ),
+                  onPressed: wallets.isEmpty
+                      ? () => pushPocket<void>(context, WalletsPage(app: app))
+                      : () => showWallets(context),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            wallets.isEmpty ? 'Wallets' : 'View all',
+                            style: textStyle(
+                              context,
+                              size: 14,
+                              color: p.accent,
+                            ),
+                          ),
+                          if (remaining > 0)
+                            Text(
+                              '+$remaining more',
+                              style: textStyle(
+                                context,
+                                size: 11,
+                                color: p.secondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(width: 5),
+                      Icon(
+                        CupertinoIcons.chevron_right,
+                        color: p.accent,
+                        size: 12,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 4, 18, 16),
+            child: Semantics(
+              label: wallets.isEmpty
+                  ? 'No active wallets. Add or restore a wallet to see a tracked balance.'
+                  : 'Total tracked balance ${money(l.activeWalletBalance)} across ${wallets.length} active wallets. Calculated from manual records.',
+              child: ExcludeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          wallets.isEmpty ? '—' : money(l.activeWalletBalance),
+                          key: const ValueKey('home-total-balance'),
+                          style: textStyle(
+                            context,
+                            size: large ? 36 : 44,
+                            weight: FontWeight.w600,
+                            tabular: true,
+                            color: l.activeWalletBalance < 0 ? p.danger : p.ink,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      wallets.isEmpty
+                          ? 'No active wallets'
+                          : 'Active wallets · manual records',
+                      style: textStyle(context, size: 12, color: p.secondary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          for (var i = 0; i < visible.length; i++) ...[
+            if (i == 0) const Rule(),
+            HomeWalletBalanceRow(
+              app: app,
+              wallet: visible[i],
+              last: i == visible.length - 1,
+              onTap: () => showWallets(context),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class HomeWalletBalanceRow extends StatelessWidget {
+  const HomeWalletBalanceRow({
+    super.key,
+    required this.app,
+    required this.wallet,
+    required this.onTap,
+    this.actionLabel = 'View wallet balances',
+    this.last = false,
+  });
+  final AppController app;
+  final Wallet wallet;
+  final VoidCallback onTap;
+  final String actionLabel;
+  final bool last;
+  @override
+  Widget build(BuildContext context) {
+    final balance = app.ledger.calculate(wallet).balance;
+    final p = Palette.of(context);
+    return Column(
+      children: [
+        Press(
+          key: ValueKey('home-wallet-${wallet.id}'),
+          label:
+              '${wallet.label} tracked balance ${money(balance)}. $actionLabel.',
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          onPressed: onTap,
+          radius: 0,
+          child: Row(
+            children: [
+              IconTile(
+                walletIcon(wallet.icon),
+                color: walletColor(context, wallet),
+                size: 32,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, bounds) {
+                    final stacked =
+                        MediaQuery.textScalerOf(context).scale(1) > 1.25 ||
+                        wallet.label.length > 18 ||
+                        bounds.maxWidth < 230;
+                    final name = Text(
+                      wallet.label,
+                      style: textStyle(
+                        context,
+                        size: 14,
+                        weight: FontWeight.w500,
+                      ),
+                    );
+                    final value = Text(
+                      money(balance),
+                      key: ValueKey('home-wallet-value-${wallet.id}'),
+                      style: textStyle(
+                        context,
+                        size: 17,
+                        weight: FontWeight.w600,
+                        tabular: true,
+                        color: balance < 0 ? p.danger : p.ink,
+                      ),
+                    );
+                    return stacked
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [name, const SizedBox(height: 5), value],
+                          )
+                        : Row(
+                            children: [
+                              Expanded(child: name),
+                              const SizedBox(width: 10),
+                              Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: value,
+                                ),
+                              ),
+                            ],
+                          );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!last)
+          const Padding(padding: EdgeInsets.only(left: 62), child: Rule()),
+      ],
+    );
+  }
+}
+
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key, required this.app});
   final AppController app;
@@ -649,9 +853,9 @@ class _HistoryPageState extends State<HistoryPage> {
     final entries = l.active
         .where(
           (e) =>
-              (kind == null || kind == e.kind) &&
+              (kind == null || (e.adjustment == null && kind == e.kind)) &&
               (wallet == null || wallet == e.wallet || wallet == e.toWallet) &&
-              ('${l.category(e.categoryId)?.name ?? 'Transfer'} ${e.note} ${money(e.centavos)} ${l.wallet(e.wallet)!.label} ${l.wallet(e.toWallet)?.label ?? ''}'
+              ('${e.adjustment != null ? 'Balance adjustment' : l.category(e.categoryId)?.name ?? 'Transfer'} ${e.note} ${money(e.centavos)} ${moneyInput(e.centavos)} ${l.wallet(e.wallet)!.label} ${l.wallet(e.toWallet)?.label ?? ''}'
                   .toLowerCase()
                   .contains(query.toLowerCase())),
         )
@@ -878,15 +1082,17 @@ class _PlanPageState extends State<PlanPage> {
     final key = monthKey(month);
     final spent = l.total(EntryKind.expense, month: key);
     final budget = l.budgets[key] ?? 0;
-    final categories =
-        l.categories
-            .map(
-              (c) =>
-                  (c, l.total(EntryKind.expense, month: key, categoryId: c.id)),
-            )
-            .where((item) => item.$2 > 0)
-            .toList()
-          ..sort((a, b) => b.$2.compareTo(a.$2));
+    final categories = otherExpenseLast(
+      l.categories
+          .map(
+            (c) =>
+                (c, l.total(EntryKind.expense, month: key, categoryId: c.id)),
+          )
+          .where((item) => item.$2 > 0)
+          .toList()
+        ..sort((a, b) => b.$2.compareTo(a.$2)),
+      (item) => item.$1,
+    );
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -1108,95 +1314,114 @@ class EntryDetailPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            const SizedBox(height: 20),
-            Icon(
-              e.kind == EntryKind.transfer
-                  ? CupertinoIcons.arrow_right_arrow_left
-                  : categoryIcon(category?.icon),
-              color: p.accent,
-              size: 36,
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                IconTile(
+                  e.kind == EntryKind.transfer
+                      ? CupertinoIcons.arrow_right_arrow_left
+                      : categoryIcon(category?.icon),
+                  color: e.kind == EntryKind.transfer
+                      ? p.blue
+                      : categoryColor(context, category?.icon),
+                  size: 48,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    e.adjustment != null
+                        ? 'Balance adjustment'
+                        : switch (e.kind) {
+                            EntryKind.expense => 'Expense',
+                            EntryKind.income => 'Income',
+                            EntryKind.transfer => 'Transfer',
+                          },
+                    style: textStyle(
+                      context,
+                      size: 20,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 14),
-            Text(
-              money(e.centavos),
-              textAlign: TextAlign.center,
-              style: textStyle(
-                context,
-                size: 40,
-                weight: FontWeight.w600,
-                tabular: true,
+            const SizedBox(height: 18),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  money(e.centavos),
+                  style: textStyle(
+                    context,
+                    size: 40,
+                    weight: FontWeight.w600,
+                    tabular: true,
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              switch (e.kind) {
-                EntryKind.expense => 'Expense',
-                EntryKind.income => 'Income',
-                EntryKind.transfer => 'Transfer',
-              },
-              textAlign: TextAlign.center,
-              style: textStyle(context, size: 15, color: p.secondary),
-            ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
             Surface(
               padding: EdgeInsets.zero,
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  GroupRow(
-                    'Date',
-                    trailing: Text(
-                      shortDate(e.date),
-                      style: textStyle(context, size: 14),
+                  EntryFact('Date', shortDate(e.date)),
+                  if (category != null) EntryFact('Category', category.name),
+                  if (e.adjustment != null) ...[
+                    EntryFact(
+                      'Previously tracked',
+                      money(e.adjustment!.expected),
                     ),
-                  ),
-                  if (category != null)
-                    GroupRow(
-                      'Category',
-                      trailing: Flexible(
-                        child: Text(
-                          category.name,
-                          style: textStyle(context, size: 14),
-                        ),
-                      ),
-                      last: false,
-                    ),
-                  if (e.occurrenceDate != null)
-                    GroupRow(
-                      'Allowance occurrence',
-                      subtitle:
-                          'Originally ${shortDate(e.occurrenceDate!)}. Editing or deleting will not repeat it.',
-                    ),
-                  GroupRow(
-                    e.kind == EntryKind.transfer ? 'From' : entryAction(e.kind),
-                    trailing: Text(
-                      app.ledger.wallet(e.wallet)!.label,
-                      style: textStyle(context, size: 14),
-                    ),
+                    EntryFact('Actual at check', money(e.adjustment!.actual)),
+                  ],
+                  if (e.billId != null)
+                    EntryFact('Bill due date', shortDate(e.billDueDate!)),
+                  EntryFact(
+                    e.adjustment != null
+                        ? 'Wallet'
+                        : e.kind == EntryKind.transfer
+                        ? 'From'
+                        : entryAction(e.kind),
+                    app.ledger.wallet(e.wallet)!.label,
                   ),
                   if (e.toWallet != null)
-                    GroupRow(
-                      'To',
-                      trailing: Text(
-                        app.ledger.wallet(e.toWallet)!.label,
-                        style: textStyle(context, size: 14),
-                      ),
+                    EntryFact('To', app.ledger.wallet(e.toWallet)!.label),
+                  if (e.occurrenceDate != null)
+                    EntryFact(
+                      'Allowance occurrence',
+                      'Originally ${shortDate(e.occurrenceDate!)}. Editing or deleting will not repeat it.',
                     ),
-                  GroupRow(
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Surface(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
                     'Note',
-                    subtitle: e.note.isEmpty ? 'No note added' : e.note,
-                    last: true,
+                    style: textStyle(context, size: 13, color: p.secondary),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    e.note.isEmpty ? 'No note added' : e.note,
+                    style: textStyle(context, size: 16),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-            PrimaryButton(
-              'Edit entry',
-              icon: CupertinoIcons.pencil,
-              onPressed: app.busy
-                  ? null
-                  : () => openEntry(context, app, editing: e),
-            ),
+            if (e.adjustment == null)
+              PrimaryButton(
+                'Edit entry',
+                icon: CupertinoIcons.pencil,
+                onPressed: app.busy
+                    ? null
+                    : () => openEntry(context, app, editing: e),
+              ),
             const SizedBox(height: 12),
             Press(
               onPressed: app.busy
@@ -1224,6 +1449,66 @@ class EntryDetailPage extends StatelessWidget {
         ),
       );
     },
+  );
+}
+
+class EntryFact extends StatelessWidget {
+  const EntryFact(this.label, this.value, {super.key, this.last = false});
+  final String label, value;
+  final bool last;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        child: Semantics(
+          label: '$label: $value',
+          child: ExcludeSemantics(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final stacked =
+                    MediaQuery.textScalerOf(context).scale(1) > 1.25 ||
+                    value.length > 24 ||
+                    constraints.maxWidth < 260;
+                final caption = Text(
+                  label,
+                  style: textStyle(
+                    context,
+                    size: stacked ? 13 : 15,
+                    color: Palette.of(context).secondary,
+                  ),
+                );
+                final content = Text(
+                  value,
+                  key: ValueKey('entry-fact-$label'),
+                  textAlign: stacked ? TextAlign.start : TextAlign.end,
+                  style: textStyle(context, size: 16, weight: FontWeight.w500),
+                );
+                return stacked
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [caption, const SizedBox(height: 6), content],
+                      )
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 2, child: caption),
+                          const SizedBox(width: 18),
+                          Expanded(flex: 3, child: content),
+                        ],
+                      );
+              },
+            ),
+          ),
+        ),
+      ),
+      if (!last)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 18),
+          child: Rule(),
+        ),
+    ],
   );
 }
 
@@ -1279,7 +1564,27 @@ class _WalletsPageState extends State<WalletsPage> {
               style: textStyle(context, size: 14, color: p.secondary),
             ),
             const SizedBox(height: 24),
-            for (final wallet in widget.app.ledger.wallets) ...[
+            Surface(
+              padding: EdgeInsets.zero,
+              child: GroupRow(
+                'Direct entry buttons',
+                subtitle:
+                    '${widget.app.ledger.quickWallets.length} selected · choose and arrange',
+                icon: CupertinoIcons.square_grid_2x2,
+                last: true,
+                onTap: () => pushPocket<void>(
+                  context,
+                  DirectEntryButtonsPage(app: widget.app),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (widget.app.ledger.availableWallets.isEmpty)
+              const QuietMessage(
+                'No active wallets',
+                'Add a wallet or restore one from Hidden wallets to record an entry.',
+              ),
+            for (final wallet in widget.app.ledger.availableWallets) ...[
               Builder(
                 builder: (context) {
                   final calc = widget.app.ledger.calculate(wallet);
@@ -1329,6 +1634,42 @@ class _WalletsPageState extends State<WalletsPage> {
                           ),
                         ),
                         GroupRow(
+                          'Remove wallet',
+                          subtitle: widget.app.ledger.hasWalletHistory(wallet)
+                              ? 'Archive and keep recorded history'
+                              : 'Recoverable from Hidden wallets',
+                          icon: CupertinoIcons.minus_circle,
+                          onTap: widget.app.busy
+                              ? null
+                              : () async {
+                                  final ok = await confirmWalletRemoval(
+                                    context,
+                                    widget.app,
+                                    wallet,
+                                  );
+                                  if (mounted && !ok) {
+                                    setState(
+                                      () => error = widget.app.storageError,
+                                    );
+                                  }
+                                },
+                        ),
+                        GroupRow(
+                          'Check balance',
+                          subtitle:
+                              'Compare with the actual amount in this wallet',
+                          icon: CupertinoIcons.checkmark_circle,
+                          onTap: widget.app.busy
+                              ? null
+                              : () => pushPocket<void>(
+                                  context,
+                                  BalanceCheckPage(
+                                    app: widget.app,
+                                    wallet: wallet,
+                                  ),
+                                ),
+                        ),
+                        GroupRow(
                           'Opening balance',
                           subtitle: 'Tap to change',
                           trailing: Text(
@@ -1369,8 +1710,21 @@ class _WalletsPageState extends State<WalletsPage> {
                             '−${money(calc.outgoing)}',
                             style: textStyle(context, size: 14, tabular: true),
                           ),
-                          last: true,
+                          last: calc.adjustments == 0,
                         ),
+                        if (calc.adjustments != 0)
+                          GroupRow(
+                            'Balance adjustments',
+                            trailing: Text(
+                              money(calc.adjustments),
+                              style: textStyle(
+                                context,
+                                size: 14,
+                                tabular: true,
+                              ),
+                            ),
+                            last: true,
+                          ),
                       ],
                     ),
                   );
@@ -1378,6 +1732,21 @@ class _WalletsPageState extends State<WalletsPage> {
               ),
               const SizedBox(height: 18),
             ],
+            Surface(
+              padding: EdgeInsets.zero,
+              child: GroupRow(
+                'Hidden wallets',
+                subtitle:
+                    '${widget.app.ledger.wallets.where((w) => w.archived).length} archived or removed · restore anytime',
+                icon: CupertinoIcons.archivebox,
+                last: true,
+                onTap: () => pushPocket<void>(
+                  context,
+                  HiddenWalletsPage(app: widget.app),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
             PrimaryButton(
               'Add a wallet',
               icon: CupertinoIcons.add,
@@ -1404,7 +1773,7 @@ class _WalletsPageState extends State<WalletsPage> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Opening + income − expenses + transfers in − transfers out. Wallets are manual records; this app never moves real money.',
+              'Opening + income − expenses + transfers in − transfers out + balance adjustments. Wallets are manual records; this app never moves real money.',
               style: textStyle(context, size: 13, color: p.secondary),
             ),
           ],
@@ -1421,9 +1790,187 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with WidgetsBindingObserver {
   bool fileBusy = false;
+  bool reminderBusy = false;
+  ReminderState reminder = const ReminderState();
+  String? reminderError;
+  int reminderRead = 0;
   String? error;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    loadReminder();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !reminderBusy) loadReminder();
+  }
+
+  Future<void> loadReminder() async {
+    final bridge = widget.app.bridge;
+    if (bridge == null) return;
+    final read = ++reminderRead;
+    try {
+      final state = await bridge.reminderState();
+      if (mounted && !reminderBusy && read == reminderRead) {
+        setState(() {
+          reminder = state;
+          reminderError = state.enabled && !state.permitted
+              ? 'Notifications are blocked. Allow Ponpon notifications in Android settings to resume your reminder.'
+              : state.enabled && state.nextAtMilliseconds == null
+              ? 'The reminder could not be scheduled. Turn it off and try again.'
+              : null;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => reminderError =
+              'Reminder settings could not load. Reopen Settings to retry.',
+        );
+      }
+    }
+  }
+
+  String reminderTime(BuildContext context, int minute) {
+    final hour = minute ~/ 60;
+    final tail = (minute % 60).toString().padLeft(2, '0');
+    if (MediaQuery.alwaysUse24HourFormatOf(context)) {
+      return '${hour.toString().padLeft(2, '0')}:$tail';
+    }
+    final local = CupertinoLocalizations.of(context);
+    return '${hour % 12 == 0 ? 12 : hour % 12}:$tail ${hour < 12 ? local.anteMeridiemAbbreviation : local.postMeridiemAbbreviation}';
+  }
+
+  Future<int?> chooseReminderTime() async {
+    final now = widget.app.clock();
+    var minute = reminder.minuteOfDay ?? now.hour * 60 + now.minute;
+    final p = Palette.of(context);
+    // The wheel's initial position is a placeholder; only Done chooses a time.
+    return showPocketSheet<int>(
+      context: context,
+      builder: (ctx) => Container(
+        color: p.surface,
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Row(
+                  children: [
+                    CupertinoButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Reminder time',
+                        textAlign: TextAlign.center,
+                        style: textStyle(
+                          ctx,
+                          size: 17,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    CupertinoButton(
+                      onPressed: () => Navigator.pop(ctx, minute),
+                      child: const Text('Done'),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 216,
+                child: CupertinoDatePicker(
+                  mode: CupertinoDatePickerMode.time,
+                  use24hFormat: MediaQuery.alwaysUse24HourFormatOf(ctx),
+                  initialDateTime: DateTime(
+                    2026,
+                    1,
+                    1,
+                    minute ~/ 60,
+                    minute % 60,
+                  ),
+                  onDateTimeChanged: (value) =>
+                      minute = value.hour * 60 + value.minute,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> changeReminder(bool enabled, {bool changeTime = false}) async {
+    if (reminderBusy || widget.app.busy) return;
+    final bridge = widget.app.bridge;
+    if (bridge == null) {
+      setState(
+        () =>
+            reminderError = 'Daily reminders are available in the Android app.',
+      );
+      return;
+    }
+    setState(() {
+      reminderRead++;
+      reminderBusy = true;
+      reminderError = null;
+    });
+    try {
+      int? minute = reminder.minuteOfDay;
+      if (enabled || changeTime) {
+        minute = await chooseReminderTime();
+        if (minute == null || !mounted) return;
+      }
+      if (enabled && !await bridge.requestReminderPermission()) {
+        if (!mounted) return;
+        reminder = await bridge.setReminder(
+          enabled: false,
+          minuteOfDay: minute,
+        );
+        if (mounted) {
+          setState(
+            () => reminderError = 'Notifications are blocked. The reminder stays off. Allow Ponpon notifications in Android settings, then try again.',
+          );
+        }
+        return;
+      }
+      final state = await bridge.setReminder(
+        enabled: enabled,
+        minuteOfDay: minute,
+      );
+      if (mounted) {
+        setState(() {
+          reminder = state;
+          if (enabled && state.nextAtMilliseconds == null) reminderError = 'The reminder could not be scheduled. Turn it off and try again.';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => reminderError =
+              'The reminder could not be changed. Reopen Settings to retry.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => reminderBusy = false);
+    }
+  }
+
   Future<void> export() async {
     if (fileBusy) return;
     setState(() {
@@ -1439,7 +1986,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       final success = await bridge.export(
         widget.app.ledger.encode(),
-        'Pocket Entry-${dayKey(widget.app.clock())}.json',
+        'Ponpon-${dayKey(widget.app.clock())}.json',
       );
       if (success) {
         widget.app.feedback = 'Backup exported';
@@ -1491,7 +2038,8 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => error = 'Could not read that file. Choose a valid Pocket Entry JSON backup.',
+          () => error =
+              'Could not read that file. Choose a valid Ponpon JSON backup.',
         );
       }
     } finally {
@@ -1499,20 +2047,31 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> pinWidget() async {
+  Future<void> pinWidget({bool compact = false, bool balance = false}) async {
     try {
-      final requested = await widget.app.bridge?.pinWidget() ?? false;
+      final requested =
+          await widget.app.bridge?.pinWidget(
+            compact: compact,
+            balance: balance,
+          ) ??
+          false;
       if (mounted) {
         await showCupertinoDialog<void>(
           context: context,
           builder: (ctx) => CupertinoAlertDialog(
-            title: Text(
-              requested ? 'Add Pocket Entry' : 'Add from your home screen',
-            ),
+            title: Text(requested ? 'Add Ponpon' : 'Add from your home screen'),
             content: Text(
               requested
-                  ? 'Confirm the widget in your launcher. It shows categories only.'
-                  : 'Long-press an empty area on your home screen, choose Widgets, then Pocket Entry. You can also long-press the app icon for Quick add.',
+                  ? 'Confirm the ${balance
+                        ? 'balance 2 × 2'
+                        : compact
+                        ? 'compact 2 × 2'
+                        : 'larger'} widget in your launcher. ${balance ? 'Amounts stay hidden unless you enable Show balance on widget.' : 'It shows categories only.'} Your launcher controls the final grid size.'
+                  : 'Long-press an empty area on your home screen, choose Widgets, then Ponpon${balance
+                        ? ' · Balance (2 × 2)'
+                        : compact
+                        ? ' · Quick entry (2 × 2)'
+                        : ''}. Your launcher controls the final grid size. You can also long-press the app icon for Quick add.',
             ),
             actions: [
               CupertinoDialogAction(
@@ -1526,7 +2085,7 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {
       if (mounted) {
         setState(
-          () => error = 'Use your launcher’s Widgets menu to add Pocket Entry.',
+          () => error = 'Use your launcher’s Widgets menu to add Ponpon.',
         );
       }
     }
@@ -1567,16 +2126,34 @@ class _SettingsPageState extends State<SettingsPage> {
                         pushPocket<void>(context, AllowancePage(app: app)),
                   ),
                   GroupRow(
+                    'Upcoming bills',
+                    subtitle: 'Due dates, reminders and recorded payments',
+                    icon: CupertinoIcons.calendar,
+                    onTap: () => pushPocket<void>(context, BillsPage(app: app)),
+                  ),
+                  GroupRow(
                     'Categories',
                     icon: CupertinoIcons.square_grid_2x2,
                     onTap: () =>
                         pushPocket<void>(context, CategoriesPage(app: app)),
                   ),
                   GroupRow(
+                    'Compact home widget',
+                    subtitle: '2 × 2 · categories only',
+                    icon: CupertinoIcons.square_grid_2x2,
+                    onTap: () => pinWidget(compact: true),
+                  ),
+                  GroupRow(
+                    'Balance home widget',
+                    subtitle: '2 × 2 · tap to add an entry',
+                    icon: CupertinoIcons.money_dollar_circle,
+                    onTap: () => pinWidget(balance: true),
+                  ),
+                  GroupRow(
                     'Home-screen widget',
                     subtitle: 'Categories only. No amounts or notes.',
                     icon: CupertinoIcons.rectangle_grid_1x2,
-                    onTap: pinWidget,
+                    onTap: () => pinWidget(),
                     last: true,
                   ),
                 ],
@@ -1647,6 +2224,20 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   GroupRow(
+                    'Show balance on widget',
+                    subtitle:
+                        'Visible on your home screen. Tracked amounts only.',
+                    trailing: PocketSwitch(
+                      label: 'Show balance on widget',
+                      value: prefs.balanceWidgetVisible,
+                      onChanged: app.busy
+                          ? null
+                          : (value) => app.preferences(
+                              prefs.copy(balanceWidgetVisible: value),
+                            ),
+                    ),
+                  ),
+                  GroupRow(
                     'Private app previews',
                     subtitle: 'Hides app previews and prevents screenshots.',
                     trailing: PocketSwitch(
@@ -1663,6 +2254,72 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 24),
+            Text(
+              'Daily reminder',
+              style: textStyle(context, size: 16, weight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Surface(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  GroupRow(
+                    'Remind me to log',
+                    subtitle:
+                        'Anything to log today? Add your expenses or income.',
+                    trailing: PocketSwitch(
+                      label: 'Daily reminder',
+                      value: reminder.enabled,
+                      onChanged: app.busy || reminderBusy
+                          ? null
+                          : changeReminder,
+                    ),
+                  ),
+                  GroupRow(
+                    'Time',
+                    subtitle: reminder.minuteOfDay == null
+                        ? 'Choose a time when you turn it on.'
+                        : '${reminderTime(context, reminder.minuteOfDay!)} · Your device’s local time',
+                    icon: CupertinoIcons.clock,
+                    onTap: app.busy || reminderBusy
+                        ? null
+                        : () => changeReminder(
+                            reminder.enabled,
+                            changeTime: true,
+                          ),
+                    last: reminder.permitted,
+                  ),
+                  if (!reminder.permitted)
+                    GroupRow(
+                      'Allow notifications',
+                      subtitle:
+                          'Open Ponpon’s notification settings in Android.',
+                      icon: CupertinoIcons.bell,
+                      onTap: reminderBusy
+                          ? null
+                          : () async {
+                              try {
+                                await app.bridge?.openNotificationSettings();
+                              } catch (_) {
+                                if (mounted) {
+                                  setState(
+                                    () => reminderError = 'Open Android Settings, then Ponpon notifications.',
+                                  );
+                                }
+                              }
+                            },
+                      last: true,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'A quiet reminder, around your chosen time. Android may delay it to save battery. Tapping it opens Add entry; you choose the wallet.',
+              style: textStyle(context, size: 12, color: p.secondary),
+            ),
+            ErrorLine(reminderError),
             const SizedBox(height: 24),
             Text(
               'Your data',
@@ -1734,7 +2391,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 18),
             Text(
-              'Pocket Entry 0.2.0 · Provisional name\nPHP · Offline · Manual wallet tracking',
+              'Ponpon 0.2.7 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
               style: textStyle(context, size: 12, color: p.secondary),
             ),
             const SizedBox(height: 24),
@@ -1852,6 +2509,16 @@ class _CategoriesPageState extends State<CategoriesPage> {
     builder: (context, _) {
       final p = Palette.of(context);
       final l = widget.app.ledger;
+      final managedCategories = otherExpenseLast([
+        ...l.categories,
+        if (l.category(schoolSuppliesCategory.id) == null)
+          schoolSuppliesCategory,
+      ], (c) => c);
+      final widgetCategories = otherExpenseLast([
+        ...l.availableCategories,
+        if (l.category(schoolSuppliesCategory.id) == null)
+          schoolSuppliesCategory,
+      ], (c) => c);
       return PocketPage(
         'Categories',
         trailing: Press(
@@ -1877,22 +2544,24 @@ class _CategoriesPageState extends State<CategoriesPage> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  for (var i = 0; i < l.categories.length; i++)
+                  for (var i = 0; i < managedCategories.length; i++)
                     GroupRow(
-                      l.categories[i].name,
-                      subtitle: l.categories[i].archived ? 'Archived' : null,
-                      icon: categoryIcon(l.categories[i].icon),
+                      managedCategories[i].name,
+                      subtitle: managedCategories[i].archived
+                          ? 'Archived'
+                          : null,
+                      icon: categoryIcon(managedCategories[i].icon),
                       trailing: Icon(
                         l.preferences.widgetCategories.contains(
-                              l.categories[i].id,
+                              managedCategories[i].id,
                             )
                             ? CupertinoIcons.pin_fill
                             : CupertinoIcons.pin,
                         size: 18,
                         color: p.secondary,
                       ),
-                      onTap: () => options(l.categories[i]),
-                      last: i == l.categories.length - 1,
+                      onTap: () => options(managedCategories[i]),
+                      last: i == managedCategories.length - 1,
                     ),
                 ],
               ),
@@ -1912,7 +2581,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  for (final c in l.availableCategories)
+                  for (final c in widgetCategories)
                     GroupRow(
                       c.name,
                       trailing: PocketSwitch(
@@ -1943,7 +2612,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
                                 }
                               },
                       ),
-                      last: c == l.availableCategories.last,
+                      last: c == widgetCategories.last,
                     ),
                 ],
               ),

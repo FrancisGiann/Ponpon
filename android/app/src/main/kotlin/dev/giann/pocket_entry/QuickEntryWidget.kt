@@ -13,12 +13,13 @@ import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
 
-class QuickEntryWidget : AppWidgetProvider() {
+open class QuickEntryWidget : AppWidgetProvider() {
+    protected open val compact = false
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        ids.forEach { manager.updateAppWidget(it, views(context, it)) }
+        ids.forEach { manager.updateAppWidget(it, views(context, it, compact)) }
     }
     override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) {
-        manager.updateAppWidget(id, views(context, id))
+        manager.updateAppWidget(id, views(context, id, compact))
     }
     override fun onDeleted(context: Context, ids: IntArray) {
         // No per-widget ledger or wallet state exists to delete.
@@ -28,12 +29,12 @@ class QuickEntryWidget : AppWidgetProvider() {
         val slots = intArrayOf(R.id.category_one, R.id.category_two, R.id.category_three, R.id.category_four)
         val labels=intArrayOf(R.id.category_one_name,R.id.category_two_name,R.id.category_three_name,R.id.category_four_name)
         val icons=intArrayOf(R.id.category_one_icon,R.id.category_two_icon,R.id.category_three_icon,R.id.category_four_icon)
-        private val lightIcons=mapOf("food" to R.drawable.category_food_light, "travel" to R.drawable.category_travel_light, "bills" to R.drawable.category_bills_light, "shopping" to R.drawable.category_shopping_light, "health" to R.drawable.category_health_light, "fun" to R.drawable.category_fun_light, "home" to R.drawable.category_home_light, "income" to R.drawable.category_income_light, "other" to R.drawable.category_other_light)
-        private val darkIcons=mapOf("food" to R.drawable.category_food_dark, "travel" to R.drawable.category_travel_dark, "bills" to R.drawable.category_bills_dark, "shopping" to R.drawable.category_shopping_dark, "health" to R.drawable.category_health_dark, "fun" to R.drawable.category_fun_dark, "home" to R.drawable.category_home_dark, "income" to R.drawable.category_income_dark, "other" to R.drawable.category_other_dark)
+        private val lightIcons=mapOf("food" to R.drawable.category_food_light, "travel" to R.drawable.category_travel_light, "bills" to R.drawable.category_bills_light, "shopping" to R.drawable.category_shopping_light, "school" to R.drawable.category_school_light, "health" to R.drawable.category_health_light, "fun" to R.drawable.category_fun_light, "home" to R.drawable.category_home_light, "income" to R.drawable.category_income_light, "other" to R.drawable.category_other_light)
+        private val darkIcons=mapOf("food" to R.drawable.category_food_dark, "travel" to R.drawable.category_travel_dark, "bills" to R.drawable.category_bills_dark, "shopping" to R.drawable.category_shopping_dark, "school" to R.drawable.category_school_dark, "health" to R.drawable.category_health_dark, "fun" to R.drawable.category_fun_dark, "home" to R.drawable.category_home_dark, "income" to R.drawable.category_income_dark, "other" to R.drawable.category_other_dark)
         fun iconResource(icon:String?, dark:Boolean):Int=(if(dark)darkIcons else lightIcons)[icon] ?: (if(dark)R.drawable.category_other_dark else R.drawable.category_other_light)
         fun categoryTone(icon: String?): String = when(icon) {
             "food", "home" -> "plum"
-            "travel" -> "blue"
+            "travel", "school" -> "blue"
             "bills", "shopping" -> "amber"
             "health", "income" -> "green"
             "fun" -> "rose"
@@ -60,7 +61,17 @@ class QuickEntryWidget : AppWidgetProvider() {
         val defaultCategories = "[{\"id\":\"food\",\"name\":\"Food\",\"icon\":\"food\"},{\"id\":\"travel\",\"name\":\"Travel\",\"icon\":\"travel\"},{\"id\":\"bills\",\"name\":\"Bills\",\"icon\":\"bills\"},{\"id\":\"shopping\",\"name\":\"Shopping\",\"icon\":\"shopping\"}]"
         fun refresh(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
-            manager.getAppWidgetIds(ComponentName(context, QuickEntryWidget::class.java)).forEach { manager.updateAppWidget(it, views(context, it)) }
+            for (provider in listOf(QuickEntryWidget::class.java, CompactEntryWidget::class.java, BalanceEntryWidget::class.java)) {
+                manager.getAppWidgetIds(ComponentName(context, provider)).forEach {
+                    manager.updateAppWidget(it, if (provider == BalanceEntryWidget::class.java) BalanceEntryWidget.views(context, it) else views(context, it, provider == CompactEntryWidget::class.java))
+                }
+            }
+        }
+        fun ownsWidget(context: Context, widgetId: Int): Boolean {
+            val manager = AppWidgetManager.getInstance(context)
+            return listOf(QuickEntryWidget::class.java, CompactEntryWidget::class.java, BalanceEntryWidget::class.java).any {
+                manager.getAppWidgetIds(ComponentName(context, it)).contains(widgetId)
+            }
         }
         fun pending(context: Context, widgetId: Int, index: Int, category: String?): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).setAction(QuickEntryPolicy.ACTION)
@@ -69,13 +80,16 @@ class QuickEntryWidget : AppWidgetProvider() {
             else intent.data = null
             return PendingIntent.getActivity(context, widgetId * 8 + index, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
-        fun views(context: Context, widgetId: Int): RemoteViews {
+        fun views(context: Context, widgetId: Int, compact: Boolean = false): RemoteViews {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val theme = prefs.getString("theme", "system")
             val systemDark = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
             val dark = theme == "dark" || theme == "system" && systemDark
             val largeType = context.resources.configuration.fontScale > 1.2f
-            val view = RemoteViews(context.packageName, if(largeType) R.layout.quick_entry_widget_large_type else R.layout.quick_entry_widget)
+            val layout = if (compact) {
+                if (largeType) R.layout.compact_entry_widget_large_type else R.layout.compact_entry_widget
+            } else if (largeType) R.layout.quick_entry_widget_large_type else R.layout.quick_entry_widget
+            val view = RemoteViews(context.packageName, layout)
             view.setViewVisibility(R.id.widget_hint, if(largeType) View.GONE else View.VISIBLE)
             view.setInt(R.id.widget_root, "setBackgroundResource", if (dark) R.drawable.widget_background_dark else R.drawable.widget_background)
             view.setTextColor(R.id.widget_title, Color.parseColor(if (dark) "#F7F3F1" else "#27212A"))
@@ -89,7 +103,12 @@ class QuickEntryWidget : AppWidgetProvider() {
                 else {
                     val name = c.optString("name").take(30)
                     view.setViewVisibility(slot, View.VISIBLE)
-                    view.setTextViewText(labels[index], name)
+                    val label = when {
+                        compact && id == "school_supplies" && name == "School supplies" -> "School"
+                        compact && !largeType && id == "shopping" && name == "Shopping" -> "Shop"
+                        else -> name
+                    }
+                    view.setTextViewText(labels[index], label)
                     view.setImageViewResource(icons[index],iconResource(c.optString("icon"),dark))
                     view.setContentDescription(slot, "Add $name entry")
                     view.setTextColor(labels[index], categoryColor(c.optString("icon"),dark))
