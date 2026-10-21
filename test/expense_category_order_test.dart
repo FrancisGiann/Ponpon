@@ -83,6 +83,20 @@ void main() {
     },
   );
 
+  test('Category icon choices cannot change income or expense type', () {
+    expect(categoryIconsFor(defaultIncomeCategories.first), ['income']);
+    expect(
+      categoryIconsFor(defaultCategories.first),
+      isNot(contains('income')),
+    );
+    const userIncome = Category(
+      id: 'salary_custom',
+      name: 'Salary',
+      icon: 'income',
+    );
+    expect(categoryIconsFor(userIncome), ['income']);
+  });
+
   test(
     'Native quick-entry payload puts Other last without changing pins',
     () async {
@@ -112,8 +126,54 @@ void main() {
         'other',
       ]);
       expect(calls.single.method, 'syncAppearance');
+      expect(ledger.quickCategories.map((c) => c.id), [
+        'income_gift',
+        'school_supplies',
+        'food',
+        'other',
+      ]);
       expect(ledger.encode(), before);
       expect(ledger.preferences.widgetCategories.first, 'other');
+    },
+  );
+
+  test(
+    'Quick selection filters archived IDs and leaves stored order alone',
+    () {
+      final ledger = Ledger.empty().copy(
+        categories: [
+          ...defaultCategories,
+          const Category(id: 'old', name: 'Old', icon: 'home', archived: true),
+        ],
+        preferences: const Preferences(
+          widgetCategories: ['other', 'old', 'income_gift', 'food'],
+        ),
+      );
+      final before = ledger.encode();
+      expect(ledger.quickCategories.map((c) => c.id), [
+        'income_gift',
+        'food',
+        'other',
+      ]);
+      expect(ledger.preferences.widgetCategories, [
+        'other',
+        'old',
+        'income_gift',
+        'food',
+      ]);
+      final restored = Ledger.decode(before);
+      expect(restored.quickCategories.map((c) => c.id), [
+        'income_gift',
+        'food',
+        'other',
+      ]);
+      expect(restored.preferences.widgetCategories, [
+        'other',
+        'old',
+        'income_gift',
+        'food',
+      ]);
+      expect(ledger.encode(), before);
     },
   );
 }

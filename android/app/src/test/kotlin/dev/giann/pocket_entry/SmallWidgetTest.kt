@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -156,6 +157,161 @@ class SmallWidgetTest {
         val add = view.findViewById<View>(R.id.widget_empty_add)
         assertTrue(add.isClickable && add.height >= 48)
         assertEquals(120, add.bottom)
+    }
+    @Test fun cachedStyleIsSharedByAllProvidersAndUnknownValuesFallBackToOriginal() {
+        val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
+        val payload = { style: String? ->
+            buildMap<String, Any> {
+                put("theme", "light")
+                if (style != null) put("visualStyle", style)
+                put("privatePreview", true)
+                put("balanceWidgetVisible", true)
+                put("balanceCentavos", -12345L)
+                put("activeWalletCount", 2)
+                put("categories", listOf(mapOf("id" to "food", "name" to "Food", "icon" to "food")))
+                put("billReminders", emptyList<Map<String, Any>>())
+            }
+        }
+        val expected = listOf(
+            "original" to android.graphics.Color.parseColor("#F6F4F1"),
+            "powderBlue" to android.graphics.Color.parseColor("#EFF6FC"),
+            "notebook" to android.graphics.Color.parseColor("#F6F1E5"),
+            "midnight" to android.graphics.Color.parseColor("#0C1420"),
+        )
+        for ((styleName, backgroundColor) in expected) {
+            prefs.edit().clear().commit()
+            WidgetSnapshot.apply(context, payload(styleName))
+            assertEquals(styleName, prefs.getString("visualStyle", null))
+            val views = listOf(
+                QuickEntryWidget.views(context, 210),
+                QuickEntryWidget.views(context, 211, compact = true),
+            ).map { it.apply(context, FrameLayout(context)) }
+            val balance = BalanceEntryWidget.views(context, 212).apply(context, FrameLayout(context))
+            val roots = views.map { it.findViewById<View>(R.id.widget_root) } +
+                balance.findViewById<View>(R.id.balance_widget_root)
+            for (root in roots) {
+                val color = (root.background as GradientDrawable).color!!.defaultColor
+                assertEquals(styleName, backgroundColor, color)
+            }
+            val balanceAmount = balance.findViewById<TextView>(R.id.balance_widget_amount)
+            assertEquals("−₱123.45", balanceAmount.text.toString())
+        }
+        for (missingOrUnknown in listOf(null, "futureStyle")) {
+            prefs.edit().clear().commit()
+            WidgetSnapshot.apply(context, payload(missingOrUnknown))
+            assertEquals("original", prefs.getString("visualStyle", null))
+            assertEquals("original", WidgetStyle.normalize(missingOrUnknown))
+        }
+    }
+    @Test fun allStylesKeepLongLabelsAndBalancesReadableAcrossWidgetSizes() {
+        val original = Configuration(context.resources.configuration)
+        val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
+        val labels = listOf(
+            "Daily household essentials",
+            "After-school transportation",
+            "Emergency medical supplies",
+            "Learning and school materials",
+        )
+        val categories = """
+            [{"id":"home","name":"${labels[0]}","icon":"home"},
+             {"id":"travel","name":"${labels[1]}","icon":"travel"},
+             {"id":"health","name":"${labels[2]}","icon":"health"},
+             {"id":"school","name":"${labels[3]}","icon":"school"}]
+        """.trimIndent().replace("\n", "")
+        val styleThemes = listOf(
+            "original" to "light", "original" to "dark",
+            "powderBlue" to "light", "powderBlue" to "dark",
+            "notebook" to "light", "notebook" to "dark",
+            "midnight" to "light", "midnight" to "dark",
+        )
+        try {
+            for (scale in listOf(1f, 1.5f)) {
+                val config = Configuration(original).apply { fontScale = scale }
+                @Suppress("DEPRECATION")
+                context.resources.updateConfiguration(config, context.resources.displayMetrics)
+                for ((style, theme) in styleThemes) {
+                    prefs.edit().clear()
+                        .putString("theme", theme)
+                        .putString("visualStyle", style)
+                        .putString("categories", categories)
+                        .putLong("balanceUpdatedAt", 1)
+                        .putLong("balanceCentavos", -12345L)
+                        .putInt("activeWalletCount", 2)
+                        .commit()
+                    val tokens = WidgetStyle.from(context, style, theme)
+                    assertEquals(style, tokens.name)
+                    assertEquals(style == "midnight" || theme == "dark", tokens.dark)
+
+                    val compact = QuickEntryWidget.views(context, 290, compact = true)
+                        .apply(context, FrameLayout(context))
+                    size(compact, 128, 128)
+                    for (index in QuickEntryWidget.slots.indices) {
+                        val cell = compact.findViewById<View>(QuickEntryWidget.slots[index])
+                        val label = compact.findViewById<TextView>(QuickEntryWidget.labels[index])
+                        assertTrue("compact target too small: $style/$theme/$scale", cell.width >= 48 && cell.height >= 48)
+                        assertTrue("compact target is not clickable", cell.isClickable)
+                        assertEquals("Add ${labels[index]} entry", cell.contentDescription)
+                        assertEquals(1, label.layout.lineCount)
+                        assertTrue("long compact label should ellipsize", label.layout.getEllipsisCount(0) > 0)
+                        assertTrue("compact label clipped vertically", label.layout.getLineBottom(0) <= label.height)
+                        assertTrue("compact label extends past its cell", label.bottom <= cell.height)
+                    }
+                    capture(compact, 128, 128, "029-style-widget-compact-$style-$theme-$scale")
+
+                    prefs.edit().putBoolean("balanceVisible", false).commit()
+                    val hidden = BalanceEntryWidget.views(context, 291)
+                        .apply(context, FrameLayout(context))
+                    size(hidden, 128, 128)
+                    val hiddenAmount = hidden.findViewById<TextView>(R.id.balance_widget_amount)
+                    val hiddenAdd = hidden.findViewById<View>(R.id.balance_widget_add)
+                    assertEquals("••••", hiddenAmount.text.toString())
+                    assertFalse(hidden.contentDescription.contains("₱"))
+                    assertFalse(allText(hidden).contains("123"))
+                    assertTrue(hiddenAmount.layout.lineCount in 1..2)
+                    for (line in 0 until hiddenAmount.layout.lineCount) {
+                        assertEquals(0, hiddenAmount.layout.getEllipsisCount(line))
+                        assertTrue(hiddenAmount.layout.getLineBottom(line) <= hiddenAmount.height)
+                    }
+                    assertTrue(hiddenAdd.width >= 48 && hiddenAdd.height >= 48 && hiddenAdd.isClickable)
+                    capture(hidden, 128, 128, "029-style-widget-balance-hidden-$style-$theme-$scale")
+
+                    prefs.edit().putBoolean("balanceVisible", true).commit()
+                    val negative = BalanceEntryWidget.views(context, 292)
+                        .apply(context, FrameLayout(context))
+                    size(negative, 128, 128)
+                    val negativeAmount = negative.findViewById<TextView>(R.id.balance_widget_amount)
+                    assertEquals("−₱123.45", negativeAmount.text.toString())
+                    assertTrue(negative.contentDescription.contains("−₱123.45"))
+                    assertTrue(negativeAmount.layout.lineCount in 1..2)
+                    for (line in 0 until negativeAmount.layout.lineCount) {
+                        assertEquals(0, negativeAmount.layout.getEllipsisCount(line))
+                        assertTrue("negative amount clipped", negativeAmount.layout.getLineBottom(line) <= negativeAmount.height)
+                    }
+                    capture(negative, 128, 128, "029-style-widget-balance-negative-$style-$theme-$scale")
+
+                    val large = QuickEntryWidget.views(context, 293)
+                        .apply(context, FrameLayout(context))
+                    size(large, 330, 180)
+                    for (index in QuickEntryWidget.slots.indices) {
+                        val cell = large.findViewById<View>(QuickEntryWidget.slots[index])
+                        val label = large.findViewById<TextView>(QuickEntryWidget.labels[index])
+                        assertTrue("large target too small: $style/$theme/$scale", cell.width >= 48 && cell.height >= 48)
+                        assertTrue(cell.isClickable)
+                        assertEquals("Add ${labels[index]} entry", cell.contentDescription)
+                        assertEquals(1, label.layout.lineCount)
+                        assertTrue("large label clipped vertically", label.layout.getLineBottom(0) <= label.height)
+                        assertTrue(label.bottom <= cell.height)
+                        assertTrue("long large label should ellipsize", label.layout.getEllipsisCount(0) > 0)
+                    }
+                    assertFalse(allText(large).contains("123"))
+                    capture(large, 330, 180, "029-style-widget-quick-large-$style-$theme-$scale")
+                }
+            }
+        } finally {
+            @Suppress("DEPRECATION")
+            context.resources.updateConfiguration(original, context.resources.displayMetrics)
+            prefs.edit().clear().commit()
+        }
     }
     private fun allText(view: View): String = if (view is TextView) view.text.toString() else if (view is android.view.ViewGroup) (0 until view.childCount).joinToString(" ") { allText(view.getChildAt(it)) } else ""
 }

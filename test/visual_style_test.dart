@@ -59,7 +59,8 @@ void main() {
       );
     }
     final original = Map<String, dynamic>.from(calls.first.arguments as Map)
-      ..remove('theme');
+      ..remove('theme')
+      ..remove('visualStyle');
     for (var i = 0; i < calls.length; i++) {
       expect(calls[i].method, 'syncAppearance');
       final payload = Map<String, dynamic>.from(calls[i].arguments as Map);
@@ -67,6 +68,7 @@ void main() {
         payload.remove('theme'),
         VisualStyle.values[i] == VisualStyle.midnight ? 'dark' : 'light',
       );
+      expect(payload.remove('visualStyle'), VisualStyle.values[i].name);
       expect(payload, original);
     }
   });

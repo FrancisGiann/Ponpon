@@ -83,17 +83,17 @@ open class QuickEntryWidget : AppWidgetProvider() {
         fun views(context: Context, widgetId: Int, compact: Boolean = false): RemoteViews {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val theme = prefs.getString("theme", "system")
-            val systemDark = context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
-            val dark = theme == "dark" || theme == "system" && systemDark
+            val style = WidgetStyle.from(context, prefs.getString("visualStyle", "original"), theme)
+            val dark = style.dark
             val largeType = context.resources.configuration.fontScale > 1.2f
             val layout = if (compact) {
                 if (largeType) R.layout.compact_entry_widget_large_type else R.layout.compact_entry_widget
             } else if (largeType) R.layout.quick_entry_widget_large_type else R.layout.quick_entry_widget
             val view = RemoteViews(context.packageName, layout)
             view.setViewVisibility(R.id.widget_hint, if(largeType) View.GONE else View.VISIBLE)
-            view.setInt(R.id.widget_root, "setBackgroundResource", if (dark) R.drawable.widget_background_dark else R.drawable.widget_background)
-            view.setTextColor(R.id.widget_title, Color.parseColor(if (dark) "#F7F3F1" else "#27212A"))
-            view.setTextColor(R.id.widget_hint, Color.parseColor(if (dark) "#BBB3BD" else "#6A606F"))
+            view.setInt(R.id.widget_root, "setBackgroundResource", style.backgroundResource)
+            view.setTextColor(R.id.widget_title, style.ink)
+            view.setTextColor(R.id.widget_hint, style.secondary)
             view.setOnClickPendingIntent(R.id.widget_header, pending(context, widgetId, 0, null))
             val categories = try { JSONArray(prefs.getString("categories", defaultCategories)) } catch (_: Exception) { JSONArray(defaultCategories) }
             slots.forEachIndexed { index, slot ->
@@ -111,15 +111,15 @@ open class QuickEntryWidget : AppWidgetProvider() {
                     view.setTextViewText(labels[index], label)
                     view.setImageViewResource(icons[index],iconResource(c.optString("icon"),dark))
                     view.setContentDescription(slot, "Add $name entry")
-                    view.setTextColor(labels[index], categoryColor(c.optString("icon"),dark))
-                    view.setInt(slot, "setBackgroundResource", categoryBackground(c.optString("icon"),dark))
+                    view.setTextColor(labels[index], if (style.name == "original") categoryColor(c.optString("icon"),dark) else style.accent)
+                    view.setInt(slot, "setBackgroundResource", if (style.name == "original") categoryBackground(c.optString("icon"),dark) else style.cellResource)
                     view.setOnClickPendingIntent(slot, pending(context, widgetId, index + 1, id))
                 }
             }
             view.setViewVisibility(R.id.category_grid,if(categories.length()>0)View.VISIBLE else View.GONE)
             view.setViewVisibility(R.id.widget_empty_add,if(categories.length()==0)View.VISIBLE else View.GONE)
-            view.setInt(R.id.widget_empty_add,"setBackgroundResource",if(dark)R.drawable.widget_chip_dark else R.drawable.widget_chip)
-            view.setTextColor(R.id.widget_empty_label,Color.parseColor(if(dark)"#E9CCE6" else "#5B315D"))
+            view.setInt(R.id.widget_empty_add,"setBackgroundResource",if (style.name == "original") { if(dark)R.drawable.widget_chip_dark else R.drawable.widget_chip } else style.cellResource)
+            view.setTextColor(R.id.widget_empty_label,style.accent)
             view.setOnClickPendingIntent(R.id.widget_empty_add,pending(context,widgetId,5,null))
             view.setViewVisibility(R.id.widget_row_1,if(categories.length()>0)View.VISIBLE else View.GONE)
             view.setViewVisibility(R.id.widget_row_2,if(categories.length()>2)View.VISIBLE else View.GONE)

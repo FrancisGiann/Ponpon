@@ -203,6 +203,9 @@ const categoryIcons = [
   'other',
   'school',
 ];
+List<String> categoryIconsFor(Category category) => categoryIcons
+    .where((icon) => category.isIncome ? icon == 'income' : icon != 'income')
+    .toList(growable: false);
 const schoolSuppliesCategory = Category(
   id: 'school_supplies',
   name: 'School supplies',
@@ -644,6 +647,19 @@ class Ledger {
   );
   late final List<Category> availableCategories = List.unmodifiable(
     otherExpenseLast(categories.where((c) => !c.archived), (c) => c),
+  );
+
+  /// The persisted quick-category selection, filtered for display only.
+  /// Selection order and IDs remain untouched in preferences.
+  late final List<Category> quickCategories = List.unmodifiable(
+    otherExpenseLast(
+      preferences.widgetCategories
+          .map(category)
+          .whereType<Category>()
+          .where((c) => !c.archived)
+          .take(4),
+      (c) => c,
+    ),
   );
   Category? category(String? id) => _categoryIndex[id];
   List<Category> categoriesFor(EntryKind kind) {

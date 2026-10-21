@@ -58,14 +58,7 @@ class NativeBridge {
     String? revision,
     bool foreground = true,
   }) async {
-    final selected = otherExpenseLast(
-      ledger.preferences.widgetCategories
-          .map(ledger.category)
-          .whereType<Category>()
-          .where((c) => !c.archived)
-          .take(4),
-      (c) => c,
-    );
+    final selected = ledger.quickCategories;
     final billReminders = <Map<String, dynamic>>[
       for (final bill in ledger.bills)
         if (bill.enabled && bill.remind && bill.nextDue(ledger) != null)
@@ -80,6 +73,7 @@ class NativeBridge {
       'ledgerRevision': ?revision,
       'billReminders': billReminders,
       'theme': ledger.preferences.effectiveTheme,
+      'visualStyle': ledger.preferences.visualStyle.name,
       'privatePreview': ledger.preferences.privatePreview,
       'balanceWidgetVisible': ledger.preferences.balanceWidgetVisible,
       'balanceCentavos': ledger.activeWalletBalance,

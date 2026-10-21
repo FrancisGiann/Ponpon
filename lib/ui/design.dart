@@ -96,6 +96,14 @@ class Palette {
     VisualStyle.notebook || VisualStyle.midnight => 14,
     _ => 26,
   };
+  double get surfaceBorderWidth => switch (style) {
+    VisualStyle.original => .75,
+    VisualStyle.powderBlue => 1,
+    VisualStyle.notebook => 1.15,
+    VisualStyle.midnight => 1.2,
+  };
+  Color get surfaceEdge =>
+      style == VisualStyle.original ? tone(0xFFE4DED8, 0xFF3F3943) : line;
   double controlCorner(double original) =>
       style == VisualStyle.original ? original : controlRadius;
   double get badgeRadius => style == VisualStyle.original
@@ -189,9 +197,12 @@ TextStyle textStyle(
       : weight,
   color: color ?? Palette.of(context).ink,
   height: height ?? 1.3,
-  letterSpacing: VisualStyleScope.of(context) == VisualStyle.notebook
-      ? 0
-      : (size >= 28 ? -1.0 : -.25),
+  letterSpacing: switch (VisualStyleScope.of(context)) {
+    VisualStyle.original => size >= 28 ? -1.0 : -.25,
+    VisualStyle.powderBlue => size >= 28 ? -.6 : -.1,
+    VisualStyle.notebook => 0,
+    VisualStyle.midnight => size >= 28 ? -.7 : -.15,
+  },
   fontFeatures: tabular ? const [FontFeature.tabularFigures()] : null,
 );
 
@@ -709,13 +720,30 @@ class Surface extends StatelessWidget {
     this.padding = const EdgeInsets.all(18),
     this.roundTop = true,
     this.roundBottom = true,
+    this.detailBand = false,
   });
   final Widget child;
   final EdgeInsets padding;
   final bool roundTop, roundBottom;
+
+  /// Reserve a small decorative strip above the content when a preview needs it.
+  final bool detailBand;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final contents = detailBand
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 28,
+                child: CustomPaint(painter: SurfaceDetail(p)),
+              ),
+              Padding(padding: padding, child: child),
+            ],
+          )
+        : Padding(padding: padding, child: child);
     return Container(
       decoration: BoxDecoration(
         color: p.surface,
@@ -723,22 +751,19 @@ class Surface extends StatelessWidget {
           top: Radius.circular(roundTop ? p.cardRadius : 0),
           bottom: Radius.circular(roundBottom ? p.cardRadius : 0),
         ),
-        border: p.border == null
-            ? null
-            : Border(
-                left: BorderSide(color: p.line),
-                right: BorderSide(color: p.line),
-                top: roundTop ? BorderSide(color: p.line) : BorderSide.none,
-                bottom: roundBottom
-                    ? BorderSide(color: p.line)
-                    : BorderSide.none,
-              ),
+        border: Border(
+          left: BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth),
+          right: BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth),
+          top: roundTop
+              ? BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth)
+              : BorderSide.none,
+          bottom: roundBottom
+              ? BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth)
+              : BorderSide.none,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: CustomPaint(
-        painter: SurfaceDetail(p),
-        child: Padding(padding: padding, child: child),
-      ),
+      child: contents,
     );
   }
 }

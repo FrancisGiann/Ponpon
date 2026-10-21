@@ -3,8 +3,6 @@ package dev.giann.pocket_entry
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
@@ -31,8 +29,8 @@ class BalanceEntryWidget : AppWidgetProvider() {
         fun views(context: Context, widgetId: Int): RemoteViews {
             val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
             val theme = prefs.getString("theme", "system")
-            val systemDark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-            val dark = theme == "dark" || theme == "system" && systemDark
+            val style = WidgetStyle.from(context, prefs.getString("visualStyle", "original"), theme)
+            val dark = style.dark
             val visible = prefs.getBoolean("balanceVisible", false)
             val synced = prefs.contains("balanceUpdatedAt")
             val count = prefs.getInt("activeWalletCount", 0)
@@ -49,18 +47,18 @@ class BalanceEntryWidget : AppWidgetProvider() {
                 else -> "$count active ${if (count == 1) "wallet" else "wallets"}"
             }
             val view = RemoteViews(context.packageName, R.layout.balance_entry_widget)
-            val ink = Color.parseColor(if (dark) "#F7F3F1" else "#27212A")
-            val muted = Color.parseColor(if (dark) "#BBB3BD" else "#6A606F")
-            val accent = Color.parseColor(if (dark) "#E9CCE6" else "#5B315D")
-            view.setInt(R.id.balance_widget_root, "setBackgroundResource", if (dark) R.drawable.widget_background_dark else R.drawable.widget_background)
+            val ink = style.ink
+            val muted = style.secondary
+            val accent = style.accent
+            view.setInt(R.id.balance_widget_root, "setBackgroundResource", style.backgroundResource)
             view.setTextColor(R.id.balance_widget_title, muted)
-            view.setTextColor(R.id.balance_widget_amount, if (visible && balance < 0 && count > 0) Color.parseColor(if (dark) "#FFBAB3" else "#AA3429") else ink)
+            view.setTextColor(R.id.balance_widget_amount, if (visible && balance < 0 && count > 0) style.danger else ink)
             view.setTextColor(R.id.balance_widget_scope, muted)
             view.setTextColor(R.id.balance_widget_add_label, accent)
             view.setTextColor(R.id.balance_widget_compact_action, accent)
             view.setTextViewText(R.id.balance_widget_amount, amount)
             view.setTextViewText(R.id.balance_widget_scope, scope)
-            view.setInt(R.id.balance_widget_add, "setBackgroundResource", if (dark) R.drawable.widget_cell_plum_dark else R.drawable.widget_cell_plum_light)
+            view.setInt(R.id.balance_widget_add, "setBackgroundResource", if (style.name == "original") { if (dark) R.drawable.widget_cell_plum_dark else R.drawable.widget_cell_plum_light } else style.cellResource)
             view.setImageViewResource(R.id.balance_widget_add_icon, QuickEntryWidget.iconResource("income", dark))
             val minHeight = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 128)
             val compactType = context.resources.configuration.fontScale > 1.2f && minHeight < 160

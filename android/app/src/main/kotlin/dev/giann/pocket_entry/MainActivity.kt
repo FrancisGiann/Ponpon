@@ -102,6 +102,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "syncAppearance" -> {
                     val theme = call.argument<String>("theme") ?: "system"
+                    val visualStyle = WidgetStyle.normalize(call.argument<String>("visualStyle"))
                     val private = call.argument<Boolean>("privatePreview") ?: true
                     val balanceVisible = call.argument<Boolean>("balanceWidgetVisible") ?: false
                     val balance = call.argument<Any>("balanceCentavos")
@@ -111,7 +112,7 @@ class MainActivity : FlutterActivity() {
                     if (!BillReminder.valid(bills) || theme !in listOf("system", "light", "dark") || (balance !is Long && balance !is Int) || walletCount == null || walletCount !in 0..20 || raw.size > 4 || raw.any { !(it["id"] ?: "").matches(Regex("[a-zA-Z0-9_-]{1,80}")) || (it["name"] ?: "").isEmpty() || (it["name"] ?: "").length > 30 }) result.error("invalid", "Invalid widget configuration", null)
                     else {
                         val json = JSONArray(); raw.forEach { json.put(JSONObject(it)) }
-                        val saved = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).edit().putString("theme", theme).putBoolean("privatePreview", private).putString("categories", json.toString()).putBoolean("balanceVisible", balanceVisible).putLong("balanceCentavos", (balance as Number).toLong()).putInt("activeWalletCount", walletCount).putLong("balanceUpdatedAt", System.currentTimeMillis()).commit()
+                        val saved = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).edit().putString("theme", theme).putString("visualStyle", visualStyle).putBoolean("privatePreview", private).putString("categories", json.toString()).putBoolean("balanceVisible", balanceVisible).putLong("balanceCentavos", (balance as Number).toLong()).putInt("activeWalletCount", walletCount).putLong("balanceUpdatedAt", System.currentTimeMillis()).commit()
                         if (private) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                         if (saved) {
                             QuickEntryWidget.refresh(this)

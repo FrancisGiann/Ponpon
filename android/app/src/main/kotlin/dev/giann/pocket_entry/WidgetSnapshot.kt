@@ -8,6 +8,7 @@ import org.json.JSONObject
 object WidgetSnapshot {
     fun apply(context: Context, args: Map<*, *>) {
         val theme = args["theme"] as? String ?: "system"
+        val visualStyle = WidgetStyle.normalize(args["visualStyle"] as? String)
         val private = args["privatePreview"] as? Boolean ?: true
         val visible = args["balanceWidgetVisible"] as? Boolean ?: false
         val balance = args["balanceCentavos"]
@@ -23,7 +24,8 @@ object WidgetSnapshot {
             categories.put(JSONObject(row))
         }
         check(context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).edit()
-            .putString("theme", theme).putBoolean("privatePreview", private).putString("categories", categories.toString())
+            .putString("theme", theme).putString("visualStyle", visualStyle)
+            .putBoolean("privatePreview", private).putString("categories", categories.toString())
             .putBoolean("balanceVisible", visible).putLong("balanceCentavos", (balance as Number).toLong())
             .putInt("activeWalletCount", count).putLong("balanceUpdatedAt", System.currentTimeMillis()).commit())
         QuickEntryWidget.refresh(context)

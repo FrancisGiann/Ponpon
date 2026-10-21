@@ -10,7 +10,7 @@ String visualStyleName(VisualStyle style) => switch (style) {
 String visualStyleDescription(VisualStyle style) => switch (style) {
   VisualStyle.original => 'Warm neutrals, soft cards and familiar purple.',
   VisualStyle.powderBlue =>
-    'Airy blue surfaces, cloud details and generous curves.',
+    'Airy blue surfaces, quiet cloud details and generous curves.',
   VisualStyle.notebook => 'Warm paper, fine rules and classic headings.',
   VisualStyle.midnight =>
     'Deep navy, crisp edges and luminous blue details. Always dark.',
@@ -104,6 +104,9 @@ class _StylePreview extends StatelessWidget {
                       }
                     },
               child: Surface(
+                detailBand:
+                    style == VisualStyle.powderBlue ||
+                    style == VisualStyle.notebook,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

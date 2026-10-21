@@ -69,6 +69,146 @@ void main() {
       },
     );
   }
+  testWidgets('Home uses selected income shortcuts with income entry type', (
+    tester,
+  ) async {
+    configure(tester, const Size(390, 844));
+    final base = synthetic(populated: false);
+    final app = fixture(
+      base.copy(
+        preferences: base.preferences.copy(widgetCategories: ['income_salary']),
+      ),
+    );
+    addTearDown(app.dispose);
+    await tester.pumpWidget(PocketApp(controller: app));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('quick-category-income_salary')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('quick-category-income_salary')),
+    );
+    await tester.pumpAndSettle();
+    expect(app.draft!.kind, EntryKind.income);
+    expect(app.draft!.categoryId, 'income_salary');
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'Manage works with an empty selection and saves the shared scope',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      final base = synthetic(populated: false);
+      final app = fixture(
+        base.copy(preferences: base.preferences.copy(widgetCategories: [])),
+      );
+      addTearDown(app.dispose);
+      await tester.pumpWidget(PocketApp(controller: app));
+      await tester.pumpAndSettle();
+      expect(find.text('Quick categories'), findsOneWidget);
+      expect(
+        find.textContaining('Choose up to four in Manage'),
+        findsOneWidget,
+      );
+      final manage = find.bySemanticsLabel('Manage quick categories');
+      await tester.ensureVisible(manage);
+      await tester.tap(manage);
+      await tester.pumpAndSettle();
+      final categoriesScroll = find
+          .descendant(
+            of: find.byType(CategoriesPage),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final scope = find.textContaining('for Today and home-screen widgets');
+      await tester.scrollUntilVisible(
+        scope,
+        300,
+        scrollable: categoriesScroll,
+      );
+      expect(
+        scope,
+        findsOneWidget,
+      );
+      final food = find.bySemanticsLabel('Food as a quick category');
+      await tester.scrollUntilVisible(
+        food,
+        300,
+        scrollable: categoriesScroll,
+      );
+      await tester.tap(food);
+      await tester.pumpAndSettle();
+      expect(app.ledger.preferences.widgetCategories, ['food']);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('quick-category-food')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('New category creation offers Income and keeps that type', (
+    tester,
+  ) async {
+    configure(tester, const Size(390, 844));
+    final app = fixture(synthetic(populated: false));
+    addTearDown(app.dispose);
+    await tester.pumpWidget(PocketApp(controller: app));
+    await tester.pumpAndSettle();
+    final manage = find.bySemanticsLabel('Manage quick categories');
+    await tester.ensureVisible(manage);
+    await tester.tap(manage);
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Create category'));
+    await tester.pumpAndSettle();
+    expect(find.text('Expense'), findsOneWidget);
+    expect(find.text('Income'), findsOneWidget);
+    await tester.tap(find.text('Income'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).last, 'Side work');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    final created = app.ledger.categories.singleWhere(
+      (category) => category.name == 'Side work',
+    );
+    expect(created.icon, 'income');
+    expect(created.isIncome, isTrue);
+    expect(categoryIconsFor(created), ['income']);
+    expect(tester.takeException(), isNull);
+  });
+  test(
+    'Archiving hides a quick category but retains its historical ID',
+    () async {
+      const custom = Category(id: 'custom', name: 'Custom', icon: 'home');
+      final base = synthetic(populated: false).copy(
+        categories: [...defaultCategories, custom],
+        entries: [
+          Entry(
+            id: 'history_custom',
+            kind: EntryKind.expense,
+            centavos: 1234,
+            date: '2026-10-12',
+            wallet: Wallet.cash,
+            categoryId: custom.id,
+            note: 'Historical note',
+            createdAt: 1,
+            updatedAt: 1,
+          ),
+        ],
+        preferences: synthetic().preferences.copy(
+          widgetCategories: ['custom', 'food'],
+        ),
+      );
+      final app = fixture(base);
+      addTearDown(app.dispose);
+      await app.category(custom.copy(archived: true));
+      expect(app.ledger.category(custom.id)!.archived, isTrue);
+      expect(app.ledger.entry('history_custom')!.categoryId, custom.id);
+      expect(app.ledger.preferences.widgetCategories, ['food']);
+      expect(app.ledger.quickCategories.map((c) => c.id), ['food']);
+      await app.category(custom.copy(archived: false));
+      expect(app.ledger.quickCategories.map((c) => c.id), ['food']);
+      expect(app.ledger.preferences.widgetCategories, ['food']);
+    },
+  );
   testWidgets('More wallets has a counted View all and stable full breakdown', (
     tester,
   ) async {

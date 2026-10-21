@@ -266,10 +266,7 @@ class TodayPage extends StatelessWidget {
     final spent = l.total(EntryKind.expense, month: month);
     final budget = l.budgets[month] ?? 0;
     final recent = l.active.take(4).toList();
-    final shortcuts = l.availableCategories
-        .where((c) => c.id != 'income')
-        .take(4)
-        .toList();
+    final shortcuts = l.quickCategories;
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -339,8 +336,36 @@ class TodayPage extends StatelessWidget {
                     style: textStyle(context, size: 13, color: p.accent),
                   ),
                 ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Quick categories',
+                      style: textStyle(
+                        context,
+                        size: 17,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Press(
+                    label: 'Manage quick categories',
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 4,
+                    ),
+                    onPressed: () =>
+                        pushPocket<void>(context, CategoriesPage(app: app)),
+                    child: Text(
+                      'Manage',
+                      style: textStyle(context, size: 14, color: p.accent),
+                    ),
+                  ),
+                ],
+              ),
               if (shortcuts.isNotEmpty) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 4),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final large =
@@ -389,7 +414,14 @@ class TodayPage extends StatelessWidget {
                     );
                   },
                 ),
-              ],
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Choose up to four in Manage to add them here and on your home-screen widgets.',
+                    style: textStyle(context, size: 13, color: p.secondary),
+                  ),
+                ),
               const SizedBox(height: 22),
               Row(
                 children: [
@@ -2401,7 +2433,7 @@ class _SettingsPageState extends State<SettingsPage>
             ),
             const SizedBox(height: 18),
             Text(
-              'Ponpon 0.2.8 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
+ 'Ponpon 0.2.9 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
               style: textStyle(context, size: 12, color: p.secondary),
             ),
             const SizedBox(height: 24),
@@ -2422,6 +2454,33 @@ class CategoriesPage extends StatefulWidget {
 class _CategoriesPageState extends State<CategoriesPage> {
   String? error;
   Future<void> edit(Category? category) async {
+    bool? newCategoryIsIncome;
+    if (category == null) {
+      newCategoryIsIncome = await showCupertinoModalPopup<bool>(
+        context: context,
+        builder: (ctx) => CupertinoActionSheet(
+          title: const Text('Category type'),
+          message: const Text(
+            'Choose the kind of entries this category is for.',
+          ),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Expense'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Income'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+        ),
+      );
+      if (newCategoryIsIncome == null || !mounted) return;
+    }
     final name = await textPrompt(
       context,
       title: category == null ? 'New category' : 'Rename category',
@@ -2445,7 +2504,11 @@ class _CategoriesPageState extends State<CategoriesPage> {
     }
     await widget.app.category(
       category?.copy(name: name.trim()) ??
-          Category(id: newId(), name: name.trim(), icon: 'other'),
+          Category(
+            id: newId(),
+            name: name.trim(),
+            icon: newCategoryIsIncome == true ? 'income' : 'other',
+          ),
     );
     if (mounted) setState(() => error = widget.app.storageError);
   }
@@ -2470,16 +2533,16 @@ class _CategoriesPageState extends State<CategoriesPage> {
                 context: context,
                 builder: (inner) => CupertinoActionSheet(
                   title: const Text('Category icon'),
-                  actions: categoryIcons
+                  actions: categoryIconsFor(c)
                       .map(
-                        (key) => CupertinoActionSheetAction(
-                          onPressed: () => Navigator.pop(inner, key),
+                        (icon) => CupertinoActionSheetAction(
+                          onPressed: () => Navigator.pop(inner, icon),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(categoryIcon(key), size: 22),
+                              Icon(categoryIcon(icon), size: 22),
                               const SizedBox(width: 10),
-                              Text(key[0].toUpperCase() + key.substring(1)),
+                              Text(icon[0].toUpperCase() + icon.substring(1)),
                             ],
                           ),
                         ),
@@ -2546,7 +2609,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Tap a category to rename, change its icon or archive it. Archiving keeps your past entries.',
+              'Create categories here, then add up to four as quick shortcuts below. Archiving hides one from new entries and shortcuts, keeps past entries, and can be undone with Unarchive.',
               style: textStyle(context, size: 14, color: p.secondary),
             ),
             const SizedBox(height: 22),
@@ -2578,12 +2641,12 @@ class _CategoriesPageState extends State<CategoriesPage> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Widget categories',
+              'Quick categories',
               style: textStyle(context, size: 17, weight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Text(
-              'Choose up to four. Names are visible on your home screen; amounts and notes never are.',
+              'Choose up to four for Today and home-screen widgets. Category names appear on widgets. Transaction notes are never shown; balance visibility is controlled separately.',
               style: textStyle(context, size: 13, color: p.secondary),
             ),
             const SizedBox(height: 12),
@@ -2595,7 +2658,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
                     GroupRow(
                       c.name,
                       trailing: PocketSwitch(
-                        label: '${c.name} on home widget',
+                        label: '${c.name} as a quick category',
                         value: l.preferences.widgetCategories.contains(c.id),
                         onChanged: widget.app.busy
                             ? null
@@ -2603,7 +2666,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
                                 final ids = [...l.preferences.widgetCategories];
                                 if (value && ids.length >= 4) {
                                   setState(
-                                    () => error = 'Choose up to four widget categories. Turn one off first.',
+                                    () => error = 'Choose up to four quick categories. Turn one off first.',
                                   );
                                   return;
                                 }
