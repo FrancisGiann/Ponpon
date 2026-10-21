@@ -92,24 +92,23 @@ class _BalanceCheckState extends State<BalanceCheckPage> {
               style: textStyle(context, color: p.secondary),
             ),
             const SizedBox(height: 20),
-            Text('Actual balance', style: textStyle(context, size: 14)),
+            Text('Actual balance', style: formLabelStyle(context)),
             const SizedBox(height: 6),
             Text(
               'Compare with the same tracked balance shown in your wallets, including all recorded entries.',
               style: textStyle(context, size: 13, color: p.secondary),
             ),
             const SizedBox(height: 8),
-            CupertinoTextField(
+            PocketTextField(
               key: const ValueKey('balance-check-actual'),
               controller: actual,
+              money: true,
               placeholder: 'Amount in PHP',
               maxLength: 13,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
                 signed: true,
               ),
-              padding: const EdgeInsets.all(16),
-              style: textStyle(context),
               onChanged: (_) => setState(() {
                 review = null;
                 error = null;
@@ -261,18 +260,29 @@ class BillsPage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
-            for (final bill in inactive)
-              GroupRow(
-                bill.name,
-                subtitle: bill.enabled ? 'Paid · no more due dates' : 'Paused',
-                icon: CupertinoIcons.calendar,
-                onTap: () => pushPocket<void>(
-                  context,
-                  BillEditorPage(app: app, bill: bill),
+            if (inactive.isNotEmpty)
+              Surface(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    for (final bill in inactive)
+                      GroupRow(
+                        bill.name,
+                        last: bill == inactive.last,
+                        subtitle: bill.enabled
+                            ? 'Paid · no more due dates'
+                            : 'Paused',
+                        icon: CupertinoIcons.calendar,
+                        onTap: () => pushPocket<void>(
+                          context,
+                          BillEditorPage(app: app, bill: bill),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             const SizedBox(height: 16),
-            PrimaryButton(
+            SecondaryButton(
               'Add a bill',
               icon: CupertinoIcons.add,
               onPressed: app.busy
@@ -399,29 +409,26 @@ class _BillEditorState extends State<BillEditorPage> {
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('Bill name', style: textStyle(context, size: 14)),
+            Text('Bill name', style: formLabelStyle(context)),
             const SizedBox(height: 8),
-            CupertinoTextField(
+            PocketTextField(
               key: const ValueKey('bill-name'),
               controller: name,
               maxLength: 60,
               placeholder: 'For example, Internet',
-              padding: const EdgeInsets.all(16),
-              style: textStyle(context),
             ),
             const SizedBox(height: 20),
-            Text('Amount in PHP', style: textStyle(context, size: 14)),
+            Text('Amount in PHP', style: formLabelStyle(context)),
             const SizedBox(height: 8),
-            CupertinoTextField(
+            PocketTextField(
               key: const ValueKey('bill-amount'),
               controller: amount,
+              money: true,
               maxLength: 12,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
               placeholder: '0.00',
-              padding: const EdgeInsets.all(16),
-              style: textStyle(context),
             ),
             const SizedBox(height: 20),
             Surface(
@@ -437,12 +444,7 @@ class _BillEditorState extends State<BillEditorPage> {
                   for (final option in BillFrequency.values)
                     GroupRow(
                       billFrequencyLabel(option),
-                      trailing: Icon(
-                        frequency == option
-                            ? CupertinoIcons.checkmark_circle_fill
-                            : CupertinoIcons.circle,
-                        color: p.accent,
-                      ),
+                      selected: frequency == option,
                       onTap: app.busy || hasHistory
                           ? null
                           : () => setState(() => frequency = option),
@@ -563,7 +565,7 @@ class _BillPaymentState extends State<BillPaymentPage> {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.app,
     builder: (context, _) {
-      final p = Palette.of(context), l = widget.app.ledger;
+      final l = widget.app.ledger;
       final categories = l.availableCategories
           .where((c) => !c.isIncome)
           .toList();
@@ -592,21 +594,24 @@ class _BillPaymentState extends State<BillPaymentPage> {
               style: textStyle(context, size: 16, weight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
-            for (final option in l.availableWallets)
-              GroupRow(
-                option.label,
-                subtitle: wallet == option ? 'Selected' : null,
-                icon: walletIcon(option.icon),
-                trailing: Icon(
-                  wallet == option
-                      ? CupertinoIcons.checkmark_circle_fill
-                      : CupertinoIcons.circle,
-                  color: p.accent,
-                ),
-                onTap: widget.app.busy
-                    ? null
-                    : () => setState(() => wallet = option),
+            Surface(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  for (final option in l.availableWallets)
+                    GroupRow(
+                      option.label,
+                      subtitle: wallet == option ? 'Selected' : null,
+                      icon: walletIcon(option.icon),
+                      selected: wallet == option,
+                      last: option == l.availableWallets.last,
+                      onTap: widget.app.busy
+                          ? null
+                          : () => setState(() => wallet = option),
+                    ),
+                ],
               ),
+            ),
             if (l.availableWallets.isEmpty)
               const Text('Restore or add a wallet before recording a payment.'),
             const SizedBox(height: 20),
@@ -614,21 +619,24 @@ class _BillPaymentState extends State<BillPaymentPage> {
               'Expense category',
               style: textStyle(context, size: 16, weight: FontWeight.w600),
             ),
-            for (final option in categories)
-              GroupRow(
-                option.name,
-                subtitle: category?.id == option.id ? 'Selected' : null,
-                icon: categoryIcon(option.icon),
-                trailing: Icon(
-                  category?.id == option.id
-                      ? CupertinoIcons.checkmark_circle_fill
-                      : CupertinoIcons.circle,
-                  color: p.accent,
-                ),
-                onTap: widget.app.busy
-                    ? null
-                    : () => setState(() => category = option),
+            Surface(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  for (final option in categories)
+                    GroupRow(
+                      option.name,
+                      subtitle: category?.id == option.id ? 'Selected' : null,
+                      icon: categoryIcon(option.icon),
+                      selected: category?.id == option.id,
+                      last: option == categories.last,
+                      onTap: widget.app.busy
+                          ? null
+                          : () => setState(() => category = option),
+                    ),
+                ],
               ),
+            ),
             const SizedBox(height: 20),
             ErrorLine(error),
             PrimaryButton(

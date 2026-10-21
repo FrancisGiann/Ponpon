@@ -92,18 +92,11 @@ class _WalletEditorState extends State<WalletEditorPage> {
               ),
             ),
             const SizedBox(height: 24),
-            CupertinoTextField(
+            PocketTextField(
               key: const ValueKey('wallet-name'),
               controller: name,
               maxLength: 30,
               placeholder: 'Wallet name, e.g. Maya',
-              placeholderStyle: textStyle(context, color: p.secondary),
-              style: textStyle(context),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: p.surface,
-                borderRadius: BorderRadius.circular(16),
-              ),
             ),
             const SizedBox(height: 24),
             Text('Icon', style: textStyle(context, weight: FontWeight.w600)),

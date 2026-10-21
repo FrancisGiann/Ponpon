@@ -6,6 +6,7 @@ import 'package:pocket_entry/data/native_bridge.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_entry/app_controller.dart';
 import 'package:pocket_entry/data/storage.dart';
+import 'package:pocket_entry/data/coordinated_store.dart';
 import 'package:pocket_entry/domain/ledger.dart';
 import 'package:pocket_entry/main.dart';
 import 'package:pocket_entry/ui/entry_page.dart';
@@ -371,6 +372,42 @@ void main() {
         ),
       );
       final appearance = <Map<dynamic, dynamic>>[];
+      final current = File('${directory.path}/ledger.json');
+      final previous = File('${directory.path}/ledger.previous.json');
+      String token() =>
+          current.existsSync() ? current.readAsStringSync() : 'missing';
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(CoordinatedLedgerStore.channel, (
+            call,
+          ) async {
+            switch (call.method) {
+              case 'snapshot':
+                return {
+                  'revision': token(),
+                  'currentPresent': current.existsSync(),
+                  'previousPresent': previous.existsSync(),
+                  'current': current.existsSync()
+                      ? current.readAsBytesSync()
+                      : null,
+                  'previous': previous.existsSync()
+                      ? previous.readAsBytesSync()
+                      : null,
+                };
+              case 'save':
+                final args = call.arguments as Map;
+                expect(args['expectedRevision'], token());
+                await FileLedgerStore(directory)
+                    .save(Ledger.decode(args['encoded'] as String));
+                return token();
+              case 'syncSnapshot':
+                expect((call.arguments as Map)['ledgerRevision'], token());
+                appearance.add(call.arguments as Map<dynamic, dynamic>);
+                return null;
+              default:
+                return null;
+            }
+          });
+
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(NativeBridge.channel, (call) async {
             if (call.method == 'privatePath') return directory.path;
@@ -381,6 +418,8 @@ void main() {
             return null;
           });
       addTearDown(() async {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(CoordinatedLedgerStore.channel, null);
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(NativeBridge.channel, null);
         await directory.delete(recursive: true);

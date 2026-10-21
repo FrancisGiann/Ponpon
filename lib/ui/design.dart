@@ -3,30 +3,140 @@ import 'package:flutter/physics.dart';
 
 import '../domain/ledger.dart';
 
+class VisualStyleScope extends InheritedWidget {
+  const VisualStyleScope({
+    super.key,
+    required this.style,
+    required super.child,
+  });
+  final VisualStyle style;
+  static VisualStyle of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<VisualStyleScope>()?.style ??
+      VisualStyle.original;
+  @override
+  bool updateShouldNotify(VisualStyleScope oldWidget) =>
+      style != oldWidget.style;
+}
+
 class Palette {
-  const Palette(this.dark);
+  const Palette(this.dark, [this.style = VisualStyle.original]);
   final bool dark;
-  static Palette of(BuildContext context) =>
-      Palette(CupertinoTheme.of(context).brightness == Brightness.dark);
-  Color get background =>
-      dark ? const Color(0xFF151416) : const Color(0xFFF6F4F1);
-  Color get surface => dark ? const Color(0xFF232125) : const Color(0xFFFFFFFF);
-  Color get ink => dark ? const Color(0xFFF7F3F1) : const Color(0xFF27212A);
-  Color get secondary =>
-      dark ? const Color(0xFFBBB3BD) : const Color(0xFF6A606F);
-  Color get line => dark ? const Color(0xFF3F3943) : const Color(0xFFE5DFE7);
-  Color get accent => dark ? const Color(0xFFE9CCE6) : const Color(0xFF5B315D);
-  Color get onAccent =>
-      dark ? const Color(0xFF322235) : const Color(0xFFFFFFFF);
-  Color get tint => dark ? const Color(0xFF382E3C) : const Color(0xFFF0E8F1);
-  Color get green => dark ? const Color(0xFFADE2C8) : const Color(0xFF246D53);
-  Color get greenTint =>
-      dark ? const Color(0xFF263C33) : const Color(0xFFE8F3EC);
-  Color get blue => dark ? const Color(0xFFBBD7FF) : const Color(0xFF285B8C);
-  Color get blueTint =>
-      dark ? const Color(0xFF29374C) : const Color(0xFFEAF1FA);
-  Color get danger => dark ? const Color(0xFFFFBAB3) : const Color(0xFFAA3429);
-  Color get amber => dark ? const Color(0xFFEFCF9C) : const Color(0xFF84551C);
+  final VisualStyle style;
+  static Palette of(BuildContext context) => Palette(
+    CupertinoTheme.of(context).brightness == Brightness.dark,
+    VisualStyleScope.of(context),
+  );
+  Color tone(int light, int night) => Color(dark ? night : light);
+  Color get background => switch (style) {
+    VisualStyle.powderBlue => tone(0xFFEFF6FC, 0xFF142431),
+    VisualStyle.notebook => tone(0xFFF6F1E5, 0xFF25231F),
+    VisualStyle.midnight => const Color(0xFF0C1420),
+    _ => tone(0xFFF6F4F1, 0xFF151416),
+  };
+  Color get surface => switch (style) {
+    VisualStyle.powderBlue => tone(0xFFF8FCFF, 0xFF1F3546),
+    VisualStyle.notebook => tone(0xFFFFFCF4, 0xFF302C26),
+    VisualStyle.midnight => const Color(0xFF152235),
+    _ => tone(0xFFFFFFFF, 0xFF232125),
+  };
+  Color get ink => switch (style) {
+    VisualStyle.powderBlue => tone(0xFF173447, 0xFFEDF7FF),
+    VisualStyle.notebook => tone(0xFF302A23, 0xFFF5ECDD),
+    VisualStyle.midnight => const Color(0xFFF0F5FF),
+    _ => tone(0xFF27212A, 0xFFF7F3F1),
+  };
+  Color get secondary => switch (style) {
+    VisualStyle.powderBlue => tone(0xFF4B6274, 0xFFB8CCD9),
+    VisualStyle.notebook => tone(0xFF685C4D, 0xFFC9BCA7),
+    VisualStyle.midnight => const Color(0xFFB8C8DC),
+    _ => tone(0xFF6A606F, 0xFFBBB3BD),
+  };
+  Color get line => switch (style) {
+    VisualStyle.powderBlue => tone(0xFFB7CBDA, 0xFF526B7E),
+    VisualStyle.notebook => tone(0xFFCFC3AC, 0xFF716958),
+    VisualStyle.midnight => const Color(0xFF455A76),
+    _ => tone(0xFFE5DFE7, 0xFF3F3943),
+  };
+  Color get accent => switch (style) {
+    VisualStyle.powderBlue => tone(0xFF244E6D, 0xFFB7D9F1),
+    VisualStyle.notebook => tone(0xFF55432B, 0xFFE3C895),
+    VisualStyle.midnight => const Color(0xFFC1DCFF),
+    _ => tone(0xFF5B315D, 0xFFE9CCE6),
+  };
+  Color get onAccent => switch (style) {
+    VisualStyle.powderBlue => tone(0xFFFFFFFF, 0xFF122B3D),
+    VisualStyle.notebook => tone(0xFFFFFFFF, 0xFF302519),
+    VisualStyle.midnight => const Color(0xFF10233D),
+    _ => tone(0xFFFFFFFF, 0xFF322235),
+  };
+  Color get tint => switch (style) {
+    VisualStyle.powderBlue => tone(0xFFD8EAF6, 0xFF304F66),
+    VisualStyle.notebook => tone(0xFFEDE1CA, 0xFF4B4030),
+    VisualStyle.midnight => const Color(0xFF243D5B),
+    _ => tone(0xFFF0E8F1, 0xFF382E3C),
+  };
+  double get cardRadius => switch (style) {
+    VisualStyle.powderBlue => 28,
+    VisualStyle.notebook || VisualStyle.midnight => 12,
+    _ => 20,
+  };
+  double get controlRadius => switch (style) {
+    VisualStyle.powderBlue => 24,
+    VisualStyle.notebook || VisualStyle.midnight => 10,
+    _ => 16,
+  };
+  double get sheetRadius => switch (style) {
+    VisualStyle.powderBlue => 34,
+    VisualStyle.notebook => 18,
+    VisualStyle.midnight => 16,
+    _ => 30,
+  };
+  double get navRadius => switch (style) {
+    VisualStyle.powderBlue => 30,
+    VisualStyle.notebook || VisualStyle.midnight => 14,
+    _ => 26,
+  };
+  double controlCorner(double original) =>
+      style == VisualStyle.original ? original : controlRadius;
+  double get badgeRadius => style == VisualStyle.original
+      ? 13
+      : style == VisualStyle.powderBlue
+      ? 18
+      : 8;
+  Border? get border =>
+      style == VisualStyle.original ? null : Border.all(color: line);
+  Color get green => tone(0xFF246D53, 0xFFADE2C8);
+  Color get greenTint => tone(0xFFE8F3EC, 0xFF263C33);
+  Color get blue => tone(0xFF285B8C, 0xFFBBD7FF);
+  Color get blueTint => tone(0xFFEAF1FA, 0xFF29374C);
+  Color get danger => tone(0xFFAA3429, 0xFFFFBAB3);
+  Color get amber => tone(0xFF84551C, 0xFFEFCF9C);
+}
+
+/// Static, low-contrast decoration stays behind content and never receives input.
+class SurfaceDetail extends CustomPainter {
+  const SurfaceDetail(this.palette);
+  final Palette palette;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = palette.accent.withValues(alpha: .055);
+    if (palette.style == VisualStyle.powderBlue) {
+      canvas.drawCircle(Offset(size.width - 30, 18), 22, paint);
+      canvas.drawCircle(Offset(size.width - 57, 20), 15, paint);
+      canvas.drawCircle(Offset(size.width - 12, 32), 18, paint);
+    } else if (palette.style == VisualStyle.notebook) {
+      paint.strokeWidth = .5;
+      for (double y = 26; y < size.height; y += 26) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+      }
+      canvas.drawLine(const Offset(12, 0), Offset(12, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(SurfaceDetail oldDelegate) =>
+      oldDelegate.palette.style != palette.style ||
+      oldDelegate.palette.dark != palette.dark;
 }
 
 class MotionScope extends InheritedWidget {
@@ -49,7 +159,7 @@ class SegmentLabel extends StatelessWidget {
   Widget build(BuildContext context) => ConstrainedBox(
     constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: EdgeInsets.zero,
       child: Center(
         child: Text(
           label,
@@ -70,11 +180,84 @@ TextStyle textStyle(
 }) => TextStyle(
   fontFamily: 'Inter',
   fontSize: size,
-  fontWeight: weight,
+  fontWeight:
+      VisualStyleScope.of(context) == VisualStyle.notebook &&
+          size >= 19 &&
+          weight.value >= FontWeight.w600.value &&
+          !tabular
+      ? FontWeight.w500
+      : weight,
   color: color ?? Palette.of(context).ink,
   height: height ?? 1.3,
-  letterSpacing: size >= 28 ? -1.0 : -.25,
+  letterSpacing: VisualStyleScope.of(context) == VisualStyle.notebook
+      ? 0
+      : (size >= 28 ? -1.0 : -.25),
   fontFeatures: tabular ? const [FontFeature.tabularFigures()] : null,
+);
+
+/// Shared form treatment; callbacks and keyboard behavior stay with the caller.
+class PocketTextField extends StatelessWidget {
+  const PocketTextField({
+    super.key,
+    required this.controller,
+    this.placeholder,
+    this.maxLength,
+    this.keyboardType,
+    this.onChanged,
+    this.onSubmitted,
+    this.autofocus = false,
+    this.textCapitalization = TextCapitalization.none,
+    this.money = false,
+    this.compact = false,
+  });
+  final TextEditingController controller;
+  final String? placeholder;
+  final int? maxLength;
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged, onSubmitted;
+  final bool autofocus, money, compact;
+  final TextCapitalization textCapitalization;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final size = money && !compact ? 24.0 : 17.0;
+    return CupertinoTextField(
+      controller: controller,
+      placeholder: placeholder,
+      maxLength: maxLength,
+      keyboardType: keyboardType,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      autofocus: autofocus,
+      textCapitalization: textCapitalization,
+      style: textStyle(context, size: size, tabular: money),
+      placeholderStyle: textStyle(context, size: size, color: p.secondary),
+      cursorColor: p.accent,
+      prefix: money && !compact
+          ? Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Text(
+                '₱',
+                style: textStyle(context, size: size, color: p.secondary),
+              ),
+            )
+          : null,
+      padding: EdgeInsets.all(compact ? 12 : 16),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(p.controlRadius),
+        border: p.border,
+      ),
+    );
+  }
+}
+
+TextStyle formLabelStyle(BuildContext context) => textStyle(
+  context,
+  size: 14,
+  weight: FontWeight.w600,
+  color: Palette.of(context).secondary,
 );
 
 IconData categoryIcon(String? icon) => switch (icon) {
@@ -134,7 +317,14 @@ class IconTile extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: ink.withValues(alpha: .10),
-        borderRadius: BorderRadius.circular(size * .29),
+        borderRadius: BorderRadius.circular(
+          Palette.of(context).style == VisualStyle.original
+              ? size * .29
+              : size *
+                    (Palette.of(context).style == VisualStyle.powderBlue
+                        ? .4
+                        : .18),
+        ),
       ),
       child: Icon(icon, color: ink, size: size * .52),
     );
@@ -165,7 +355,9 @@ class SheetFrame extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: p.background,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(p.sheetRadius),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
@@ -360,14 +552,14 @@ class Press extends StatefulWidget {
     this.color,
     this.label,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-    this.radius = 16,
+    this.radius,
   });
   final Widget child;
   final VoidCallback? onPressed;
   final Color? color;
   final String? label;
   final EdgeInsets padding;
-  final double radius;
+  final double? radius;
   @override
   State<Press> createState() => _PressState();
 }
@@ -396,7 +588,9 @@ class _PressState extends State<Press> {
         child: CupertinoButton(
           padding: widget.padding,
           color: widget.color,
-          borderRadius: BorderRadius.circular(widget.radius),
+          borderRadius: BorderRadius.circular(
+            widget.radius ?? Palette.of(context).controlRadius,
+          ),
           minimumSize: const Size(48, 48),
           disabledColor: Palette.of(context).line,
           onPressed: widget.onPressed,
@@ -439,7 +633,11 @@ class PrimaryButton extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (icon != null) ...[
-            Icon(icon, color: p.onAccent, size: 21),
+            Icon(
+              icon,
+              color: onPressed == null ? p.secondary : p.onAccent,
+              size: 21,
+            ),
             const SizedBox(width: 10),
           ],
           Flexible(
@@ -449,7 +647,52 @@ class PrimaryButton extends StatelessWidget {
               style: textStyle(
                 context,
                 weight: FontWeight.w600,
-                color: p.onAccent,
+                color: onPressed == null ? p.secondary : p.onAccent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Secondary actions share a quieter tint and the primary button's hit target.
+class SecondaryButton extends StatelessWidget {
+  const SecondaryButton(
+    this.label, {
+    super.key,
+    required this.onPressed,
+    this.icon,
+  });
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Press(
+      onPressed: onPressed,
+      color: p.tint,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            Icon(
+              icon,
+              color: onPressed == null ? p.secondary : p.accent,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: textStyle(
+                context,
+                color: onPressed == null ? p.secondary : p.accent,
+                weight: FontWeight.w600,
               ),
             ),
           ),
@@ -464,19 +707,40 @@ class Surface extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(18),
+    this.roundTop = true,
+    this.roundBottom = true,
   });
   final Widget child;
   final EdgeInsets padding;
+  final bool roundTop, roundBottom;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding,
-    decoration: BoxDecoration(
-      color: Palette.of(context).surface,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(roundTop ? p.cardRadius : 0),
+          bottom: Radius.circular(roundBottom ? p.cardRadius : 0),
+        ),
+        border: p.border == null
+            ? null
+            : Border(
+                left: BorderSide(color: p.line),
+                right: BorderSide(color: p.line),
+                top: roundTop ? BorderSide(color: p.line) : BorderSide.none,
+                bottom: roundBottom
+                    ? BorderSide(color: p.line)
+                    : BorderSide.none,
+              ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: CustomPaint(
+        painter: SurfaceDetail(p),
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
 }
 
 class PageHeading extends StatelessWidget {
@@ -486,7 +750,7 @@ class PageHeading extends StatelessWidget {
   final Widget? trailing;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 16, 20, 22),
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -496,7 +760,7 @@ class PageHeading extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: textStyle(context, size: 34, weight: FontWeight.w700),
+                style: textStyle(context, size: 32, weight: FontWeight.w700),
               ),
               if (subtitle != null) ...[
                 const SizedBox(height: 6),
@@ -525,6 +789,7 @@ class GroupRow extends StatelessWidget {
     this.subtitle,
     this.icon,
     this.trailing,
+    this.selected,
     this.onTap,
     this.danger = false,
     this.last = false,
@@ -535,6 +800,7 @@ class GroupRow extends StatelessWidget {
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool danger, last;
+  final bool? selected;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -565,33 +831,44 @@ class GroupRow extends StatelessWidget {
             ),
           ),
           ?trailing,
-          if (onTap != null) ...[
+          if (selected != null)
+            Icon(
+              selected!
+                  ? CupertinoIcons.checkmark_circle_fill
+                  : CupertinoIcons.circle,
+              color: p.accent,
+              size: 24,
+            ),
+          if (onTap != null && selected == null) ...[
             const SizedBox(width: 8),
             Icon(CupertinoIcons.chevron_right, color: p.secondary, size: 16),
           ],
         ],
       ),
     );
-    return Column(
-      children: [
-        if (onTap != null)
-          Press(
-            onPressed: onTap,
-            padding: EdgeInsets.zero,
-            radius: 0,
-            child: content,
-          )
-        else
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56),
-            child: content,
-          ),
-        if (!last)
-          Padding(
-            padding: EdgeInsets.only(left: icon == null ? 18 : 64),
-            child: Container(height: .5, color: p.line),
-          ),
-      ],
+    return Semantics(
+      selected: selected,
+      child: Column(
+        children: [
+          if (onTap != null)
+            Press(
+              onPressed: onTap,
+              padding: EdgeInsets.zero,
+              radius: 0,
+              child: content,
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 56),
+              child: content,
+            ),
+          if (!last)
+            Padding(
+              padding: EdgeInsets.only(left: icon == null ? 18 : 64),
+              child: Container(height: .5, color: p.line),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -689,8 +966,10 @@ class PocketEntryRoute<T> extends CupertinoSheetRoute<T> {
     super.settings,
   }) : super(
          topGap: .055,
-         scrollableBuilder: (_, _) => ClipRRect(
-           borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+         scrollableBuilder: (context, _) => ClipRRect(
+           borderRadius: BorderRadius.vertical(
+             top: Radius.circular(Palette.of(context).sheetRadius),
+           ),
            child: page,
          ),
        );
@@ -775,16 +1054,12 @@ Future<String?> textPrompt(
         children: [
           if (message != null) ...[const SizedBox(height: 8), Text(message)],
           const SizedBox(height: 14),
-          CupertinoTextField(
+          PocketTextField(
             controller: controller,
             autofocus: true,
+            compact: true,
+            money: amount,
             placeholder: hint,
-            placeholderStyle: textStyle(
-              context,
-              size: 17,
-              color: Palette.of(context).secondary,
-            ),
-            style: textStyle(context),
             onChanged: onChanged,
             maxLength: maxLength,
             keyboardType: amount
@@ -794,11 +1069,6 @@ Future<String?> textPrompt(
                 ? TextCapitalization.none
                 : TextCapitalization.sentences,
             onSubmitted: (_) => Navigator.pop(ctx, controller.text),
-            decoration: BoxDecoration(
-              color: Palette.of(context).surface,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            padding: const EdgeInsets.all(12),
           ),
         ],
       ),
@@ -873,7 +1143,7 @@ class EntryRow extends StatelessWidget {
                       context,
                       category?.icon,
                     ).withValues(alpha: .10),
-              borderRadius: BorderRadius.circular(13),
+              borderRadius: BorderRadius.circular(p.badgeRadius),
             ),
             child: Icon(
               entry.adjustment != null

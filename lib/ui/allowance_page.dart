@@ -128,40 +128,20 @@ class _AllowanceState extends State<AllowancePage> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Record regular income when you open the app. This never reloads a wallet or moves money.',
+              'Record regular income automatically on scheduled days. Android may delay background recording; opening the app catches up. This never reloads a wallet or moves money.',
               style: textStyle(context, size: 14, color: p.secondary),
             ),
             const SizedBox(height: 24),
-            Text(
-              'Amount per day',
-              style: textStyle(context, size: 13, weight: FontWeight.w600),
-            ),
+            Text('Amount per day', style: formLabelStyle(context)),
             const SizedBox(height: 8),
-            CupertinoTextField(
+            PocketTextField(
               key: const ValueKey('allowance-amount'),
               controller: amount,
               placeholder: '0.00',
-              prefix: Padding(
-                padding: const EdgeInsets.only(left: 18),
-                child: Text(
-                  '₱',
-                  style: textStyle(context, size: 24, color: p.secondary),
-                ),
-              ),
+              money: true,
               maxLength: 12,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
-              ),
-              style: textStyle(context, size: 24, tabular: true),
-              placeholderStyle: textStyle(
-                context,
-                size: 24,
-                color: p.secondary,
-              ),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: p.surface,
-                borderRadius: BorderRadius.circular(16),
               ),
             ),
             const SizedBox(height: 16),
@@ -195,7 +175,7 @@ class _AllowanceState extends State<AllowancePage> {
                   GroupRow(
                     'Enabled',
                     subtitle: enabled
-                        ? 'Income will be recorded on app opening.'
+                        ? 'Income records automatically when Android allows, with catch-up on app opening.'
                         : 'No income will be recorded.',
                     last: true,
                     trailing: PocketSwitch(
@@ -283,8 +263,7 @@ class _AllowanceState extends State<AllowancePage> {
                 'How this is recorded',
                 icon: CupertinoIcons.info_circle,
                 last: true,
-                subtitle:
-                    'On app opening · local dates · once per eligible day',
+                subtitle: 'Background + app opening · local dates · once per eligible day',
                 onTap: () => showPocketSheet<void>(
                   context: context,
                   builder: (ctx) => SheetFrame(

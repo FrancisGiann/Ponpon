@@ -157,12 +157,7 @@ class _EntryPageState extends State<EntryPage> {
                           c.name,
                           icon: categoryIcon(c.icon),
                           last: i == categories.length - 1,
-                          trailing: c.id == draft.categoryId
-                              ? Icon(
-                                  CupertinoIcons.checkmark_circle_fill,
-                                  color: Palette.of(ctx).accent,
-                                )
-                              : null,
+                          selected: c.id == draft.categoryId,
                           onTap: () => Navigator.pop(ctx, c.id),
                         );
                       },
@@ -296,6 +291,7 @@ class _EntryPageState extends State<EntryPage> {
                         child: SizedBox(
                           width: double.infinity,
                           child: CupertinoSlidingSegmentedControl<EntryKind>(
+                            proportionalWidth: true,
                             groupValue: draft.kind,
                             backgroundColor: p.line.withValues(alpha: .55),
                             thumbColor: p.surface,
@@ -594,7 +590,7 @@ class _EntryPageState extends State<EntryPage> {
                                                         horizontal: 12,
                                                         vertical: 12,
                                                       ),
-                                                  radius: 14,
+                                                  radius: p.controlCorner(14),
                                                   child: Row(
                                                     mainAxisSize:
                                                         MainAxisSize.min,
@@ -676,7 +672,10 @@ class _EntryPageState extends State<EntryPage> {
                                             padding: EdgeInsets.symmetric(
                                               vertical: compactKeypad ? 0 : 12,
                                             ),
-                                            radius: 18,
+                                            radius:
+                                                p.style == VisualStyle.original
+                                                ? 18
+                                                : p.controlRadius,
                                             color: p.surface,
                                             label: key == '⌫'
                                                 ? 'Delete last digit'
@@ -821,7 +820,6 @@ class _SaveWallet extends StatelessWidget {
       color: walletColor(context, wallet),
       onPressed: onPressed,
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: compact ? 6 : 12),
-      radius: 16,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [

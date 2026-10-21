@@ -416,10 +416,13 @@ class Entry {
   }
 }
 
+enum VisualStyle { original, powderBlue, notebook, midnight }
+
 class Preferences {
   const Preferences({
     this.welcomed = false,
     this.theme = 'system',
+    this.visualStyle = VisualStyle.original,
     this.reduceMotion = false,
     this.haptics = true,
     this.privatePreview = true,
@@ -429,6 +432,9 @@ class Preferences {
   });
   final bool welcomed;
   final String theme;
+  final VisualStyle visualStyle;
+  String get effectiveTheme =>
+      visualStyle == VisualStyle.midnight ? 'dark' : theme;
   final bool reduceMotion;
   final bool haptics;
   final bool privatePreview;
@@ -437,6 +443,7 @@ class Preferences {
   Preferences copy({
     bool? welcomed,
     String? theme,
+    VisualStyle? visualStyle,
     bool? reduceMotion,
     bool? haptics,
     bool? privatePreview,
@@ -446,6 +453,7 @@ class Preferences {
   }) => Preferences(
     welcomed: welcomed ?? this.welcomed,
     theme: theme ?? this.theme,
+    visualStyle: visualStyle ?? this.visualStyle,
     reduceMotion: reduceMotion ?? this.reduceMotion,
     haptics: haptics ?? this.haptics,
     privatePreview: privatePreview ?? this.privatePreview,
@@ -458,6 +466,7 @@ class Preferences {
   Map<String, dynamic> toJson() => {
     'welcomed': welcomed,
     'theme': theme,
+    if (visualStyle != VisualStyle.original) 'visualStyle': visualStyle.name,
     'reduceMotion': reduceMotion,
     'haptics': haptics,
     'privatePreview': privatePreview,
@@ -489,6 +498,11 @@ class Preferences {
       quickWallets: List<String>.unmodifiable(quick),
       welcomed: boolField(map, 'welcomed'),
       theme: theme,
+      visualStyle:
+          VisualStyle.values
+              .where((style) => style.name == map['visualStyle'])
+              .firstOrNull ??
+          VisualStyle.original,
       reduceMotion: boolField(map, 'reduceMotion'),
       haptics: boolField(map, 'haptics', fallback: true),
       privatePreview: boolField(map, 'privatePreview', fallback: true),

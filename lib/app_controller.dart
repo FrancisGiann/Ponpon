@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'data/native_bridge.dart';
 import 'data/storage.dart';
+import 'data/coordinated_store.dart';
 import 'domain/ledger.dart';
 
 part 'app_features.dart';
@@ -19,6 +20,7 @@ class AppController extends ChangeNotifier {
   Ledger ledger = Ledger.empty();
   Draft? draft;
   bool busy = false;
+  bool _refreshPending = false;
   String? notice;
   String? storageError;
   String? draftError;
@@ -81,10 +83,67 @@ class AppController extends ChangeNotifier {
 
   Future<void> _sync() async {
     try {
-      await bridge?.sync(ledger);
+      await bridge?.sync(
+        ledger,
+        revision: store is CoordinatedLedgerStore
+            ? (store as CoordinatedLedgerStore).revision
+            : null,
+      );
     } catch (_) {
       notice ??= 'Your records are saved. Widgets or reminders could not refresh; reopen the app to retry.';
     }
+  }
+
+  Future<void> refreshFromStorage() async {
+    if (store is! CoordinatedLedgerStore) return;
+    if (busy) {
+      _refreshPending = true;
+      return;
+    }
+    busy = true;
+    _refreshPending = false;
+    notifyListeners();
+    try {
+      final loaded = await store.load();
+      if (loaded.ledger.encode() != ledger.encode()) {
+        feedback = null;
+        feedbackUndo = false;
+      }
+      ledger = loaded.ledger;
+      notice ??= loaded.notice;
+      await _sync();
+    } catch (_) {
+      storageError = 'Updated records could not be opened. Your unfinished entry is kept; reopen the app to retry.';
+    } finally {
+      busy = false;
+      notifyListeners();
+      _drainRefresh();
+    }
+  }
+
+  void _drainRefresh() {
+    if (_refreshPending && !busy) {
+      _refreshPending = false;
+      refreshFromStorage();
+    }
+  }
+
+  Future<void> reconcileOnResume() async {
+    await refreshFromStorage();
+    await recordAllowances();
+    await _sync();
+  }
+
+  Future<void> _conflict() async {
+    feedback = null;
+    feedbackUndo = false;
+    try {
+      ledger = (await store.load()).ledger;
+      await _sync();
+    } catch (_) {
+      /* A failed read never authorizes replacing unreadable files. */
+    }
+    storageError = 'Records changed in the background. Review and try again. Your unfinished entry is kept.';
   }
 
   void startDraft({String? categoryId, Entry? editing}) {
@@ -169,6 +228,9 @@ class AppController extends ChangeNotifier {
       }
       await _sync();
       return true;
+    } on LedgerChangedException {
+      await _conflict();
+      return false;
     } on LedgerException catch (e) {
       storageError = e.message;
       return false;
@@ -178,6 +240,7 @@ class AppController extends ChangeNotifier {
     } finally {
       busy = false;
       notifyListeners();
+      _drainRefresh();
     }
   }
 
@@ -498,12 +561,16 @@ class AppController extends ChangeNotifier {
       feedbackUndo = false;
       await _sync();
       return true;
+    } on LedgerChangedException {
+      await _conflict();
+      return false;
     } catch (_) {
       storageError = 'Restore could not be saved. Your current data is unchanged; try again after freeing space.';
       return false;
     } finally {
       busy = false;
       notifyListeners();
+      _drainRefresh();
     }
   }
 

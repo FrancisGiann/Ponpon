@@ -9,6 +9,7 @@ import 'entry_page.dart';
 part 'wallet_screens.dart';
 part 'allowance_page.dart';
 part 'bills_balance.dart';
+part 'style_page.dart';
 
 Future<void> openEntry(
   BuildContext context,
@@ -192,7 +193,8 @@ class _HomeShellState extends State<HomeShell> {
                     margin: const EdgeInsets.fromLTRB(20, 6, 20, 8),
                     decoration: BoxDecoration(
                       color: p.surface,
-                      borderRadius: BorderRadius.circular(26),
+                      borderRadius: BorderRadius.circular(p.navRadius),
+                      border: p.border,
                     ),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -211,7 +213,7 @@ class _HomeShellState extends State<HomeShell> {
                                 vertical: 8,
                                 horizontal: 4,
                               ),
-                              radius: 20,
+                              radius: p.controlCorner(20),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -278,7 +280,7 @@ class TodayPage extends StatelessWidget {
             label: 'Settings',
             color: p.surface,
             padding: const EdgeInsets.all(12),
-            radius: 24,
+            radius: p.controlCorner(24),
             onPressed: () => pushPocket<void>(context, SettingsPage(app: app)),
             child: Icon(CupertinoIcons.gear_alt, color: p.ink, size: 22),
           ),
@@ -878,7 +880,12 @@ class _HistoryPageState extends State<HistoryPage> {
             placeholder: 'Category, note or amount',
             placeholderStyle: textStyle(context, size: 15, color: p.secondary),
             style: textStyle(context, size: 15),
-            backgroundColor: p.surface,
+            decoration: BoxDecoration(
+              color: p.surface,
+              border: p.border,
+              borderRadius: BorderRadius.circular(p.controlCorner(9)),
+            ),
+            itemColor: p.secondary,
             onChanged: (value) => setState(() => query = value),
           ),
         ),
@@ -899,7 +906,7 @@ class _HistoryPageState extends State<HistoryPage> {
                         horizontal: 13,
                         vertical: 12,
                       ),
-                      radius: 12,
+                      radius: p.controlCorner(12),
                       child: Text(
                         choice == null
                             ? 'All'
@@ -997,20 +1004,12 @@ class _HistoryPageState extends State<HistoryPage> {
                               ),
                             ),
                           ),
-                        Container(
-                          clipBehavior: Clip.antiAlias,
-                          decoration: BoxDecoration(
-                            color: p.surface,
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(heading ? 20 : 0),
-                              bottom: Radius.circular(
-                                i == entries.length - 1 ||
-                                        entries[i + 1].date != e.date
-                                    ? 20
-                                    : 0,
-                              ),
-                            ),
-                          ),
+                        Surface(
+                          padding: EdgeInsets.zero,
+                          roundTop: heading,
+                          roundBottom:
+                              i == entries.length - 1 ||
+                              entries[i + 1].date != e.date,
                           child: Column(
                             children: [
                               EntryRow(
@@ -1094,13 +1093,14 @@ class _PlanPageState extends State<PlanPage> {
       (item) => item.$1,
     );
     return ListView(
+      key: const ValueKey('plan-scroll'),
       padding: EdgeInsets.zero,
       children: [
         const PageHeading('Plan', subtitle: 'A simple limit. A clearer month.'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
@@ -1145,8 +1145,9 @@ class _PlanPageState extends State<PlanPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Surface(
+                key: const ValueKey('plan-spending-card'),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1159,7 +1160,7 @@ class _PlanPageState extends State<PlanPage> {
                       money(spent),
                       style: textStyle(
                         context,
-                        size: 38,
+                        size: 32,
                         weight: FontWeight.w600,
                         tabular: true,
                       ),
@@ -1180,32 +1181,10 @@ class _PlanPageState extends State<PlanPage> {
                       ),
                       const SizedBox(height: 12),
                     ],
-                    Press(
+                    SecondaryButton(
+                      budget > 0 ? 'Edit budget' : 'Set a monthly budget',
+                      icon: CupertinoIcons.slider_horizontal_3,
                       onPressed: widget.app.busy ? null : edit,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 8,
-                        horizontal: 0,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            CupertinoIcons.slider_horizontal_3,
-                            size: 18,
-                            color: p.accent,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            budget > 0 ? 'Edit budget' : 'Set a monthly budget',
-                            style: textStyle(
-                              context,
-                              size: 14,
-                              color: p.accent,
-                              weight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ],
                 ),
@@ -1225,6 +1204,7 @@ class _PlanPageState extends State<PlanPage> {
                 )
               else
                 Surface(
+                  key: const ValueKey('plan-category-card'),
                   padding: EdgeInsets.zero,
                   child: Column(
                     children: [
@@ -2120,7 +2100,7 @@ class _SettingsPageState extends State<SettingsPage>
                   ),
                   GroupRow(
                     'Scheduled allowance',
-                    subtitle: 'Record income on next app opening',
+                    subtitle: 'Background recording with app-opening catch-up',
                     icon: CupertinoIcons.calendar,
                     onTap: () =>
                         pushPocket<void>(context, AllowancePage(app: app)),
@@ -2167,6 +2147,18 @@ class _SettingsPageState extends State<SettingsPage>
             const SizedBox(height: 12),
             Surface(
               padding: EdgeInsets.zero,
+              child: GroupRow(
+                'Visual style',
+                subtitle: visualStyleName(prefs.visualStyle),
+                icon: CupertinoIcons.paintbrush,
+                last: true,
+                onTap: () =>
+                    pushPocket<void>(context, VisualStylePage(app: app)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Surface(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
                   Padding(
@@ -2175,11 +2167,29 @@ class _SettingsPageState extends State<SettingsPage>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Appearance', style: textStyle(context)),
+                        if (prefs.visualStyle == VisualStyle.midnight) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Midnight uses dark appearance. Your previous choice is kept.',
+                            style: textStyle(
+                              context,
+                              size: 13,
+                              color: p.secondary,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
                           child: CupertinoSlidingSegmentedControl<String>(
-                            groupValue: prefs.theme,
+                            groupValue:
+                                prefs.visualStyle == VisualStyle.midnight
+                                ? 'dark'
+                                : prefs.theme,
+                            disabledChildren:
+                                prefs.visualStyle == VisualStyle.midnight
+                                ? {'system', 'light', 'dark'}
+                                : {},
                             onValueChanged: (value) {
                               if (!app.busy && value != null) {
                                 app.preferences(prefs.copy(theme: value));
@@ -2391,7 +2401,7 @@ class _SettingsPageState extends State<SettingsPage>
             ),
             const SizedBox(height: 18),
             Text(
-              'Ponpon 0.2.7 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
+              'Ponpon 0.2.8 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
               style: textStyle(context, size: 12, color: p.secondary),
             ),
             const SizedBox(height: 24),

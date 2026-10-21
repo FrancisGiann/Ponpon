@@ -420,6 +420,7 @@ void main() {
     for (final value in ['system', 'light', 'dark']) {
       final finder = find.byKey(ValueKey('theme-$value'));
       await tester.ensureVisible(finder);
+      await tester.pumpAndSettle();
       expect(tester.getSize(finder).height, greaterThanOrEqualTo(48));
       expect(tester.getSize(finder).width, greaterThanOrEqualTo(48));
       expect(tester.getSemantics(finder).rect.height, greaterThanOrEqualTo(48));

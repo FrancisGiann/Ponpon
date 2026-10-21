@@ -22,6 +22,7 @@ import java.nio.charset.CodingErrorAction
 
 class MainActivity : FlutterActivity() {
     private var channel: MethodChannel? = null
+    private var ledgerChannel: LedgerChannel? = null
     private var initialRoute: QuickEntryPolicy.Route? = null
     private var initialBills = false
     private var permissionForBills = false
@@ -50,6 +51,9 @@ class MainActivity : FlutterActivity() {
     private fun consumeIntent() { intent?.action = Intent.ACTION_MAIN; intent?.data = null }
     override fun onResume() {
         super.onResume()
+        val private = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).getBoolean("privatePreview", true)
+        if (private) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        LedgerDisk.executor.execute { try { AllowanceJobs.reconcile(applicationContext) } catch (_: Exception) { } }
         try { DailyReminder.reconcile(this) } catch (_: RuntimeException) { }
         try { BillReminder.reconcile(this) } catch (_: RuntimeException) { }
     }
@@ -65,9 +69,14 @@ class MainActivity : FlutterActivity() {
     }
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        ledgerChannel = LedgerChannel(applicationContext, engine.dartExecutor.binaryMessenger)
         channel = MethodChannel(engine.dartExecutor.binaryMessenger, "dev.giann.pocket_entry/native")
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {
+                "setPrivatePreview" -> {
+                    if (call.argument<Boolean>("enabled") == true) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                    result.success(null)
+                }
                 "privatePath" -> { val folder = File(filesDir, "pocket_entry"); if (folder.isDirectory || folder.mkdirs()) result.success(folder.absolutePath) else result.error("storage", "Private storage is unavailable", null) }
                 "initialEntry" -> { val entry = initialRoute; val bills = initialBills; initialRoute = null; initialBills = false; result.success(if (bills) mapOf("bills" to true) else entry?.let { mapOf("categoryId" to it.categoryId) }) }
                 "reminderState" -> {
@@ -138,6 +147,10 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+    override fun cleanUpFlutterEngine(engine: FlutterEngine) {
+        ledgerChannel?.close(); ledgerChannel = null
+        super.cleanUpFlutterEngine(engine)
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)

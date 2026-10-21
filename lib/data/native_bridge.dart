@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 
 import '../domain/ledger.dart';
+import 'coordinated_store.dart';
 
 class ReminderState {
   const ReminderState({
@@ -52,7 +53,11 @@ class NativeBridge {
       await channel.invokeMethod<bool>('requestReminderPermission') ?? false;
   Future<void> openNotificationSettings() =>
       channel.invokeMethod<void>('openNotificationSettings');
-  Future<void> sync(Ledger ledger) async {
+  Future<void> sync(
+    Ledger ledger, {
+    String? revision,
+    bool foreground = true,
+  }) async {
     final selected = otherExpenseLast(
       ledger.preferences.widgetCategories
           .map(ledger.category)
@@ -71,9 +76,10 @@ class NativeBridge {
             'paidDates': ledger.billPaidDates(bill.id).toList()..sort(),
           },
     ];
-    await channel.invokeMethod<void>('syncAppearance', {
+    final payload = <String, dynamic>{
+      'ledgerRevision': ?revision,
       'billReminders': billReminders,
-      'theme': ledger.preferences.theme,
+      'theme': ledger.preferences.effectiveTheme,
       'privatePreview': ledger.preferences.privatePreview,
       'balanceWidgetVisible': ledger.preferences.balanceWidgetVisible,
       'balanceCentavos': ledger.activeWalletBalance,
@@ -81,7 +87,20 @@ class NativeBridge {
       'categories': selected
           .map((c) => {'id': c.id, 'name': c.name, 'icon': c.icon})
           .toList(),
-    });
+    };
+    if (revision == null) {
+      await channel.invokeMethod<void>('syncAppearance', payload);
+    } else {
+      await CoordinatedLedgerStore.channel.invokeMethod<void>(
+        'syncSnapshot',
+        payload,
+      );
+      if (foreground) {
+        await channel.invokeMethod<void>('setPrivatePreview', {
+          'enabled': ledger.preferences.privatePreview,
+        });
+      }
+    }
   }
 
   Future<bool> export(String text, String name) async =>

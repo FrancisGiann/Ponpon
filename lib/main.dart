@@ -6,7 +6,8 @@ import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'data/native_bridge.dart';
-import 'data/storage.dart';
+import 'data/coordinated_store.dart';
+import 'data/background_allowance.dart';
 import 'domain/ledger.dart';
 import 'ui/design.dart';
 import 'ui/entry_page.dart';
@@ -15,6 +16,23 @@ import 'ui/screens.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const BootstrapApp());
+}
+
+/// Short-lived data-only engine launched by Android JobScheduler.
+@pragma('vm:entry-point')
+Future<void> allowanceBackground() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  var success = false;
+  try {
+    final directory = await CoordinatedLedgerStore.privateDirectory();
+    success = await processBackgroundAllowance(
+      CoordinatedLedgerStore(directory),
+    );
+  } catch (_) {
+    /* Foreground catch-up remains available. */
+  }
+  await const MethodChannel('dev.giann.pocket_entry/allowance_job')
+      .invokeMethod<void>('complete', {'success': success});
 }
 
 class BootstrapApp extends StatefulWidget {
@@ -26,7 +44,7 @@ class BootstrapApp extends StatefulWidget {
 class _BootstrapAppState extends State<BootstrapApp> {
   final bridge = const NativeBridge();
   AppController? app;
-  FileLedgerStore? store;
+  CoordinatedLedgerStore? store;
   String? error;
   Map<dynamic, dynamic>? initialEntry;
   bool loading = true;
@@ -42,7 +60,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
       error = null;
     });
     try {
-      store ??= FileLedgerStore(Directory(await bridge.privatePath()));
+      store ??= CoordinatedLedgerStore(Directory(await bridge.privatePath()));
       final controller = AppController(store: store!, bridge: bridge);
       await controller.initialize();
       final entry = await bridge.initialEntry();
@@ -83,7 +101,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
         action: 'Restore backup',
       );
       if (!approved) return;
-      await store!.save(ledger);
+      await store!.recover(ledger);
       await load();
     } on LedgerException catch (e) {
       if (mounted) setState(() => error = e.message);
@@ -167,6 +185,9 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (app.store is CoordinatedLedgerStore) {
+      (app.store as CoordinatedLedgerStore).onChanged(app.refreshFromStorage);
+    }
     if (app.bridge != null) {
       NativeBridge.channel.setMethodCallHandler((call) async {
         if (call.method == 'quickEntry' && call.arguments is Map) {
@@ -233,18 +254,19 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
       app.updateDraft();
     }
     if (state == AppLifecycleState.resumed) {
-      app.recordAllowances().catchError((Object _) {
+      app.reconcileOnResume().catchError((Object _) {
         app.storageError = 'Allowance could not be recorded. Reopen the app to retry; existing records are safe.';
         app.publish();
-        return false;
       });
-      app.bridge?.sync(app.ledger).catchError((_) {});
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (app.store is CoordinatedLedgerStore) {
+      (app.store as CoordinatedLedgerStore).onChanged(null);
+    }
     if (app.bridge != null) NativeBridge.channel.setMethodCallHandler(null);
     super.dispose();
   }
@@ -253,13 +275,16 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: app,
     builder: (context, _) {
-      final theme = app.ledger.preferences.theme;
+      final theme = app.ledger.preferences.effectiveTheme;
       final brightness = theme == 'dark'
           ? Brightness.dark
           : theme == 'light'
           ? Brightness.light
           : MediaQuery.platformBrightnessOf(context);
-      final p = Palette(brightness == Brightness.dark);
+      final p = Palette(
+        brightness == Brightness.dark,
+        app.ledger.preferences.visualStyle,
+      );
       return CupertinoApp(
         navigatorKey: navigator,
         debugShowCheckedModeBanner: false,
@@ -293,27 +318,31 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
           final reduced =
               app.ledger.preferences.reduceMotion ||
               MediaQuery.disableAnimationsOf(context);
-          return MotionScope(
-            reduced: reduced,
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(disableAnimations: reduced),
-              child: AnnotatedRegion<SystemUiOverlayStyle>(
-                value: SystemUiOverlayStyle(
-                  statusBarColor: const Color(0x00000000),
-                  systemNavigationBarColor: p.background,
-                  statusBarIconBrightness: brightness == Brightness.dark
-                      ? Brightness.light
-                      : Brightness.dark,
-                  systemNavigationBarIconBrightness:
-                      brightness == Brightness.dark
-                      ? Brightness.light
-                      : Brightness.dark,
-                ),
-                child: Stack(
-                  children: [
-                    child!,
-                    FeedbackBanner(app: app),
-                  ],
+          return VisualStyleScope(
+            style: app.ledger.preferences.visualStyle,
+            child: MotionScope(
+              reduced: reduced,
+              child: MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(disableAnimations: reduced),
+                child: AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: SystemUiOverlayStyle(
+                    statusBarColor: const Color(0x00000000),
+                    systemNavigationBarColor: p.background,
+                    statusBarIconBrightness: brightness == Brightness.dark
+                        ? Brightness.light
+                        : Brightness.dark,
+                    systemNavigationBarIconBrightness:
+                        brightness == Brightness.dark
+                        ? Brightness.light
+                        : Brightness.dark,
+                  ),
+                  child: Stack(
+                    children: [
+                      child!,
+                      FeedbackBanner(app: app),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -378,7 +407,8 @@ class _FeedbackBannerState extends State<FeedbackBanner> {
         child: Container(
           decoration: BoxDecoration(
             color: p.surface,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(p.cardRadius),
+            border: p.border,
             boxShadow: [
               BoxShadow(
                 color: const Color(0xFF000000).withValues(alpha: .12),
