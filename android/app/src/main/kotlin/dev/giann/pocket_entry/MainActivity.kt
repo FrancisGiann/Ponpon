@@ -65,7 +65,7 @@ class MainActivity : FlutterActivity() {
         if (bills) {
             if (channel == null) initialBills = true else channel?.invokeMethod("quickEntry", mapOf("bills" to true))
         }
-        else if (entry != null) channel?.invokeMethod("quickEntry", mapOf("categoryId" to entry.categoryId))
+        else if (entry != null) channel?.invokeMethod("quickEntry", mapOf("categoryId" to entry.categoryId, "kind" to entry.kind, "walletId" to entry.walletId))
     }
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
@@ -78,7 +78,7 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "privatePath" -> { val folder = File(filesDir, "pocket_entry"); if (folder.isDirectory || folder.mkdirs()) result.success(folder.absolutePath) else result.error("storage", "Private storage is unavailable", null) }
-                "initialEntry" -> { val entry = initialRoute; val bills = initialBills; initialRoute = null; initialBills = false; result.success(if (bills) mapOf("bills" to true) else entry?.let { mapOf("categoryId" to it.categoryId) }) }
+                "initialEntry" -> { val entry = initialRoute; val bills = initialBills; initialRoute = null; initialBills = false; result.success(if (bills) mapOf("bills" to true) else entry?.let { mapOf("categoryId" to it.categoryId, "kind" to it.kind, "walletId" to it.walletId) }) }
                 "reminderState" -> {
                     try { result.success(DailyReminder.reconcile(this)) }
                     catch (_: RuntimeException) { result.success(DailyReminder.state(this)) }
@@ -111,19 +111,21 @@ class MainActivity : FlutterActivity() {
                     val bills = call.argument<List<Map<String, Any>>>("billReminders") ?: emptyList()
                     if (!BillReminder.valid(bills) || theme !in listOf("system", "light", "dark") || (balance !is Long && balance !is Int) || walletCount == null || walletCount !in 0..20 || raw.size > 4 || raw.any { !(it["id"] ?: "").matches(Regex("[a-zA-Z0-9_-]{1,80}")) || (it["name"] ?: "").isEmpty() || (it["name"] ?: "").length > 30 }) result.error("invalid", "Invalid widget configuration", null)
                     else {
-                        val json = JSONArray(); raw.forEach { json.put(JSONObject(it)) }
-                        val saved = getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE).edit().putString("theme", theme).putString("visualStyle", visualStyle).putBoolean("privatePreview", private).putString("categories", json.toString()).putBoolean("balanceVisible", balanceVisible).putLong("balanceCentavos", (balance as Number).toLong()).putInt("activeWalletCount", walletCount).putLong("balanceUpdatedAt", System.currentTimeMillis()).commit()
                         if (private) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-                        if (saved) {
-                            QuickEntryWidget.refresh(this)
-                            try { BillReminder.configure(this, bills); result.success(null) }
-                            catch (_: RuntimeException) { result.error("reminder", "Records are saved but bill reminders could not refresh", null) }
-                        } else result.error("storage", "Widget configuration could not be saved", null)
+                        try { WidgetSnapshot.apply(this, call.arguments as Map<*, *>); result.success(null) }
+                        catch (_: RuntimeException) { result.error("storage", "Widget configuration could not be saved", null) }
                     }
                 }
                 "pinWidget" -> {
                     val manager = getSystemService(AppWidgetManager::class.java)
-                    val provider = if (call.argument<Boolean>("balance") == true) BalanceEntryWidget::class.java else if (call.argument<Boolean>("compact") == true) CompactEntryWidget::class.java else QuickEntryWidget::class.java
+                    val provider = when {
+                        call.argument<Boolean>("wideBalance") == true -> WideBalanceWidget::class.java
+                        call.argument<Boolean>("walletOverview") == true -> WalletOverviewWidget::class.java
+                        call.argument<Boolean>("incomeExpense") == true -> KindEntryWidget::class.java
+                        call.argument<Boolean>("balance") == true -> BalanceEntryWidget::class.java
+                        call.argument<Boolean>("compact") == true -> CompactEntryWidget::class.java
+                        else -> QuickEntryWidget::class.java
+                    }
                     result.success(manager.isRequestPinAppWidgetSupported && manager.requestPinAppWidget(ComponentName(this, provider), null, null))
                 }
                 "exportBackup" -> {

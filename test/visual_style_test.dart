@@ -72,6 +72,90 @@ void main() {
       expect(payload, original);
     }
   });
+  for (final style in VisualStyle.values) {
+    for (final theme in ['light', 'dark']) {
+      testWidgets('Wide widget Settings preview fits $style $theme', (
+        tester,
+      ) async {
+        configure(tester, const Size(320, 640), scale: 1.6);
+        final base = synthetic(theme: theme, populated: false);
+        final app = fixture(
+          base.copy(
+            categories: [
+              for (final category in base.categories)
+                category.id == 'income'
+                    ? category.copy(name: 'Income')
+                    : category,
+            ],
+            preferences: base.preferences.copy(
+              visualStyle: style,
+              widgetCategories: ['food', 'travel', 'bills', 'income'],
+            ),
+          ),
+        );
+        addTearDown(app.dispose);
+        final key = GlobalKey();
+        await tester.pumpWidget(
+          PocketApp(
+            controller: app,
+            testHome: Center(
+              child: RepaintBoundary(
+                key: key,
+                child: SizedBox(
+                  width: 300,
+                  child: WideWidgetPreview(ledger: app.ledger),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('••••'), findsOneWidget);
+        expect(find.text('Bills'), findsOneWidget);
+        expect(find.text('Income'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await capture(tester, key, '029-wide-preview-${style.name}-$theme');
+        final shown = app.ledger.copy(
+          openings: {Wallet.cash: 1234567, Wallet.gcash: 0},
+          preferences: app.ledger.preferences.copy(balanceWidgetVisible: true),
+        );
+        await tester.pumpWidget(PocketApp(
+          controller: app,
+          testHome: Center(child: RepaintBoundary(
+            key: key,
+            child: SizedBox(width: 300, child: WideWidgetPreview(ledger: shown)),
+          )),
+        ));
+        await tester.pumpAndSettle();
+        expect(find.text('₱12,345.67'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await capture(tester, key, '029-wide-preview-shown-${style.name}-$theme');
+      });
+      testWidgets('History shows entries above the fold in $style $theme', (
+        tester,
+      ) async {
+        configure(tester, const Size(390, 844));
+        final base = synthetic(theme: theme);
+        final app = fixture(base.copy(
+          preferences: base.preferences.copy(visualStyle: style),
+        ));
+        addTearDown(app.dispose);
+        final key = GlobalKey();
+        await tester.pumpWidget(RepaintBoundary(
+          key: key,
+          child: PocketApp(
+            controller: app,
+            testHome: HomeShell(app: app, initialTab: 1),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('history-filters')), findsOneWidget);
+        expect(tester.getTopLeft(find.byType(EntryRow).first).dy, lessThan(500));
+        expect(tester.takeException(), isNull);
+        await capture(tester, key, '029-history-compact-${style.name}-$theme');
+      });
+    }
+  }
   testWidgets(
     'Failed style save is visible, preserves data and can be retried',
     (tester) async {
@@ -179,7 +263,11 @@ void main() {
         );
         await tester.pumpAndSettle();
         final target = find.text('Visual style');
-        await tester.ensureVisible(target);
+        await tester.scrollUntilVisible(
+          target,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
         await tester.pumpAndSettle();
         await capture(tester, key, '028-${style.name}-settings');
         await tester.tap(target);

@@ -1,0 +1,29 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/wallet_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:padding="12dp" android:background="@drawable/widget_background">
+    <LinearLayout android:id="@+id/wallet_header" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:contentDescription="Open Ponpon to add an entry">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="48dp"
+            android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/wallet_title" android:layout_width="0dp" android:layout_weight="1"
+                android:layout_height="wrap_content" android:text="Wallet overview" android:textSize="14sp"
+                android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1"
+                android:ellipsize="end" />
+            <FrameLayout android:id="@+id/wallet_visibility" android:layout_width="48dp"
+                android:layout_height="48dp" android:contentDescription="Show balance"
+                android:importantForAccessibility="yes">
+                <ImageView android:id="@+id/wallet_visibility_icon" android:layout_width="20dp"
+                    android:layout_height="20dp" android:layout_gravity="center"
+                    android:src="@drawable/widget_visibility_off" android:importantForAccessibility="no" />
+            </FrameLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/wallet_total" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="••••" android:textSize="22sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="10sp" android:autoSizeMaxTextSize="22sp" />
+        <TextView android:id="@+id/wallet_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Amounts hidden in Settings" android:textSize="10sp" android:fontFamily="@font/inter" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/wallet_rows" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical" android:layout_marginTop="6dp">
+        <LinearLayout android:id="@+id/wallet_row_1" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="48dp" android:gravity="center_vertical" android:paddingHorizontal="8dp" android:background="@drawable/widget_chip" android:layout_marginBottom="4dp"><TextView android:id="@+id/wallet_name_1" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:textSize="12sp" android:fontFamily="@font/inter"/><TextView android:maxWidth="120dp" android:ellipsize="end" android:id="@+id/wallet_amount_1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:textSize="12sp" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="8sp" android:autoSizeMaxTextSize="12sp" android:fontFamily="@font/inter" android:layout_marginStart="6dp"/></LinearLayout>
+        <LinearLayout android:id="@+id/wallet_row_2" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="48dp" android:gravity="center_vertical" android:paddingHorizontal="8dp" android:background="@drawable/widget_chip" android:layout_marginBottom="4dp"><TextView android:id="@+id/wallet_name_2" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:textSize="12sp" android:fontFamily="@font/inter"/><TextView android:maxWidth="120dp" android:ellipsize="end" android:id="@+id/wallet_amount_2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:textSize="12sp" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="8sp" android:autoSizeMaxTextSize="12sp" android:fontFamily="@font/inter" android:layout_marginStart="6dp"/></LinearLayout>
+        <LinearLayout android:id="@+id/wallet_row_3" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:minHeight="48dp" android:gravity="center_vertical" android:paddingHorizontal="8dp" android:background="@drawable/widget_chip"><TextView android:id="@+id/wallet_name_3" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end" android:textSize="12sp" android:fontFamily="@font/inter"/><TextView android:maxWidth="120dp" android:ellipsize="end" android:id="@+id/wallet_amount_3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxLines="1" android:textSize="12sp" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="8sp" android:autoSizeMaxTextSize="12sp" android:fontFamily="@font/inter" android:layout_marginStart="6dp"/></LinearLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/wallet_empty" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center" android:text="No active wallets" android:textSize="13sp" android:fontFamily="@font/inter" android:visibility="gone" />
+    <TextView android:id="@+id/wallet_more" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="10sp" android:fontFamily="@font/inter" android:gravity="end" android:visibility="gone" />
+</LinearLayout>

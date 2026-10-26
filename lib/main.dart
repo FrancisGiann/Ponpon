@@ -220,6 +220,14 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
     final id = request['categoryId'] is String
         ? request['categoryId'] as String
         : null;
+    final kind = switch (request['kind']) {
+      'income' => EntryKind.income,
+      'expense' => EntryKind.expense,
+      _ => null,
+    };
+    final walletId = request['walletId'] is String
+        ? request['walletId'] as String
+        : null;
     if (app.entryVisible || quickOpening || app.busy) {
       if (app.draft?.dirty == true) {
         app.feedback = 'An entry is in progress. Finish it first.';
@@ -234,6 +242,17 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
       return;
     }
     app.startDraft(categoryId: id);
+    if (kind != null) {
+      app.changeDraftKind(kind);
+      app.updateDraft();
+    }
+    final wallet = app.ledger.availableWallets
+        .where((wallet) => wallet.id == walletId)
+        .firstOrNull;
+    if (wallet != null) {
+      app.draft!.from = wallet;
+      app.updateDraft();
+    }
     quickOpening = true;
     final ctx = navigator.currentContext!;
     await navigator.currentState!.push<void>(

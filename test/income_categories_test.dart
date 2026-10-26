@@ -202,6 +202,7 @@ void main() {
         preferences: synthetic().preferences.copy(
           quickWallets: [],
           balanceWidgetVisible: true,
+          widgetCategories: ['food', 'travel', 'bills', 'income'],
         ),
       );
       await const NativeBridge().sync(ledger);
@@ -209,6 +210,28 @@ void main() {
       expect(data['balanceCentavos'], 10000);
       expect(data['activeWalletCount'], 2);
       expect(data['balanceWidgetVisible'], isTrue);
+      expect(
+        (data['wideCategories'] as List)
+            .map((row) => (row as Map)['id'])
+            .toList(),
+        ['food', 'travel', 'bills', 'income'],
+      );
+      expect(
+        (data['wideCategories'] as List)
+            .map((row) => (row as Map)['kind'])
+            .toList(),
+        ['expense', 'expense', 'expense', 'income'],
+      );
+      expect(
+        (data['wideCategories'] as List)
+            .map((row) => (row as Map)['icon'])
+            .toList(),
+        ['food', 'travel', 'bills', 'income'],
+      );
+      expect(
+        (data['wideCategories'] as List).map((row) => (row as Map)['id']),
+        (data['categories'] as List).map((row) => (row as Map)['id']),
+      );
       expect(data.containsKey('wallet'), isFalse);
       expect(data.containsKey('entries'), isFalse);
     },

@@ -61,15 +61,21 @@ open class QuickEntryWidget : AppWidgetProvider() {
         val defaultCategories = "[{\"id\":\"food\",\"name\":\"Food\",\"icon\":\"food\"},{\"id\":\"travel\",\"name\":\"Travel\",\"icon\":\"travel\"},{\"id\":\"bills\",\"name\":\"Bills\",\"icon\":\"bills\"},{\"id\":\"shopping\",\"name\":\"Shopping\",\"icon\":\"shopping\"}]"
         fun refresh(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
-            for (provider in listOf(QuickEntryWidget::class.java, CompactEntryWidget::class.java, BalanceEntryWidget::class.java)) {
+            for (provider in listOf(QuickEntryWidget::class.java, CompactEntryWidget::class.java, BalanceEntryWidget::class.java, KindEntryWidget::class.java, WalletOverviewWidget::class.java, WideBalanceWidget::class.java)) {
                 manager.getAppWidgetIds(ComponentName(context, provider)).forEach {
-                    manager.updateAppWidget(it, if (provider == BalanceEntryWidget::class.java) BalanceEntryWidget.views(context, it) else views(context, it, provider == CompactEntryWidget::class.java))
+                    manager.updateAppWidget(it, when (provider) {
+                        BalanceEntryWidget::class.java -> BalanceEntryWidget.views(context, it)
+                        KindEntryWidget::class.java -> KindEntryWidget.views(context, it)
+                        WalletOverviewWidget::class.java -> WalletOverviewWidget.views(context, it)
+                        WideBalanceWidget::class.java -> WideBalanceWidget.views(context, it)
+                        else -> views(context, it, provider == CompactEntryWidget::class.java)
+                    })
                 }
             }
         }
         fun ownsWidget(context: Context, widgetId: Int): Boolean {
             val manager = AppWidgetManager.getInstance(context)
-            return listOf(QuickEntryWidget::class.java, CompactEntryWidget::class.java, BalanceEntryWidget::class.java).any {
+            return listOf(QuickEntryWidget::class.java, CompactEntryWidget::class.java, BalanceEntryWidget::class.java, KindEntryWidget::class.java, WalletOverviewWidget::class.java, WideBalanceWidget::class.java).any {
                 manager.getAppWidgetIds(ComponentName(context, it)).contains(widgetId)
             }
         }

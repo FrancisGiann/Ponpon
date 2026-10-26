@@ -78,6 +78,32 @@ class NativeBridge {
       'balanceWidgetVisible': ledger.preferences.balanceWidgetVisible,
       'balanceCentavos': ledger.activeWalletBalance,
       'activeWalletCount': ledger.availableWallets.length,
+      'wideCategories': [
+        for (final category in selected)
+          {
+            'id': category.id,
+            'name': category.name,
+            'icon': category.icon,
+            'kind': category.isIncome ? 'income' : 'expense',
+          },
+      ],
+      'wallets':
+          [
+                ...ledger.availableWallets.where(
+                  (w) => ledger.calculate(w).balance != 0,
+                ),
+                ...ledger.availableWallets.where(
+                  (w) => ledger.calculate(w).balance == 0,
+                ),
+              ]
+              .map(
+                (w) => {
+                  'id': w.id,
+                  'name': w.label,
+                  'balanceCentavos': ledger.calculate(w).balance,
+                },
+              )
+              .toList(),
       'categories': selected
           .map((c) => {'id': c.id, 'name': c.name, 'icon': c.icon})
           .toList(),
@@ -104,10 +130,19 @@ class NativeBridge {
       }) ??
       false;
   Future<String?> pickBackup() => channel.invokeMethod<String>('pickBackup');
-  Future<bool> pinWidget({bool compact = false, bool balance = false}) async =>
+  Future<bool> pinWidget({
+    bool compact = false,
+    bool balance = false,
+    bool incomeExpense = false,
+    bool walletOverview = false,
+    bool wideBalance = false,
+  }) async =>
       await channel.invokeMethod<bool>('pinWidget', {
         'compact': compact,
         'balance': balance,
+        'incomeExpense': incomeExpense,
+        'walletOverview': walletOverview,
+        'wideBalance': wideBalance,
       }) ??
       false;
 }

@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wide_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:paddingHorizontal="8dp" android:paddingVertical="4dp"
+    android:background="@drawable/widget_background">
+    <LinearLayout android:id="@+id/wide_top" android:layout_width="match_parent" android:layout_height="0dp"
+        android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+        <FrameLayout android:id="@+id/wide_balance_area" android:layout_width="0dp" android:layout_weight="3"
+            android:layout_height="match_parent">
+        <LinearLayout android:id="@+id/wide_header" android:layout_width="match_parent"
+            android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical"
+            android:contentDescription="Tracked balance. Open Ponpon to sync." android:importantForAccessibility="yes">
+            <TextView android:layout_width="1dp" android:layout_height="14dp"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_balance" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="start"
+                android:text="••••" android:textSize="34sp" android:textStyle="bold" android:fontFamily="@font/inter"
+                android:fontFeatureSettings="tnum" android:includeFontPadding="false" android:maxLines="1"
+                android:autoSizeTextType="uniform" android:autoSizeMinTextSize="10sp"
+                android:autoSizeMaxTextSize="34sp" android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_scope" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="3 active wallets" android:textSize="10sp" android:includeFontPadding="false"
+                android:fontFamily="@font/inter"
+                android:maxLines="1" android:ellipsize="end" android:importantForAccessibility="no" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="48dp"
+            android:layout_gravity="center_vertical|start" android:translationY="-24dp"
+            android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/wide_title" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Tracked balance" android:textSize="11sp" android:textStyle="bold"
+            android:includeFontPadding="false" android:fontFamily="@font/inter"
+            android:maxLines="1" android:ellipsize="end" android:importantForAccessibility="no" />
+        <FrameLayout android:id="@+id/wide_visibility" android:layout_width="48dp" android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:contentDescription="Show balance" android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/wide_visibility_icon" android:layout_width="20dp" android:layout_height="20dp"
+                android:layout_gravity="start|center_vertical" android:src="@drawable/widget_visibility_off"
+                android:importantForAccessibility="no" />
+        </FrameLayout>
+        </LinearLayout>
+        </FrameLayout>
+        <LinearLayout android:id="@+id/wide_add" android:layout_width="0dp" android:layout_weight="2"
+            android:layout_height="48dp" android:layout_marginStart="6dp" android:orientation="horizontal"
+            android:gravity="center" android:background="@drawable/widget_chip"
+            android:contentDescription="Add an entry, choose a wallet to save" android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/wide_add_icon" android:layout_width="18dp" android:layout_height="18dp"
+                android:src="@drawable/category_income_light" android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_add_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginStart="4dp" android:text="Add entry" android:textSize="10sp"
+                android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/wide_grid" android:layout_width="match_parent" android:layout_height="50dp"
+        android:layout_marginTop="1dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/wide_category_1" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:minWidth="48dp" android:minHeight="48dp" android:layout_marginEnd="2dp"
+            android:orientation="vertical" android:gravity="center" android:paddingHorizontal="2dp"
+            android:background="@drawable/widget_category_outline"
+            android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/wide_icon_1" android:layout_width="22dp" android:layout_height="22dp"
+                android:layout_marginBottom="2dp" android:src="@drawable/category_food_light"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_name_1" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:text="Food" android:textSize="11sp" android:textStyle="bold"
+                android:maxLines="1" android:ellipsize="end" android:fontFamily="@font/inter"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wide_category_2" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:minWidth="48dp" android:minHeight="48dp" android:layout_marginHorizontal="2dp"
+            android:orientation="vertical" android:gravity="center" android:paddingHorizontal="2dp"
+            android:background="@drawable/widget_category_outline"
+            android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/wide_icon_2" android:layout_width="22dp" android:layout_height="22dp"
+                android:layout_marginBottom="2dp" android:src="@drawable/category_travel_light"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_name_2" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:text="Travel" android:textSize="11sp" android:textStyle="bold"
+                android:maxLines="1" android:ellipsize="end" android:fontFamily="@font/inter"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wide_category_3" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:minWidth="48dp" android:minHeight="48dp" android:layout_marginHorizontal="2dp"
+            android:orientation="vertical" android:gravity="center" android:paddingHorizontal="2dp"
+            android:background="@drawable/widget_category_outline"
+            android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/wide_icon_3" android:layout_width="22dp" android:layout_height="22dp"
+                android:layout_marginBottom="2dp" android:src="@drawable/category_bills_light"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_name_3" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:text="Bills" android:textSize="11sp" android:textStyle="bold"
+                android:maxLines="1" android:ellipsize="end" android:fontFamily="@font/inter"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/wide_category_4" android:layout_width="0dp" android:layout_weight="1"
+            android:layout_height="match_parent" android:minWidth="48dp" android:minHeight="48dp" android:layout_marginStart="2dp"
+            android:orientation="vertical" android:gravity="center" android:paddingHorizontal="2dp"
+            android:background="@drawable/widget_category_outline"
+            android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/wide_icon_4" android:layout_width="22dp" android:layout_height="22dp"
+                android:layout_marginBottom="2dp" android:src="@drawable/category_income_light"
+                android:importantForAccessibility="no" />
+            <TextView android:id="@+id/wide_name_4" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:text="Income" android:textSize="11sp" android:textStyle="bold"
+                android:maxLines="1" android:ellipsize="end" android:fontFamily="@font/inter"
+                android:importantForAccessibility="no" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:id="@+id/wide_empty_add" android:layout_width="match_parent" android:layout_height="52dp"
+        android:layout_marginTop="4dp" android:orientation="horizontal" android:gravity="center"
+        android:background="@drawable/widget_chip" android:visibility="gone"
+        android:contentDescription="Add an entry" android:importantForAccessibility="yes">
+        <ImageView android:layout_width="20dp" android:layout_height="20dp"
+            android:src="@drawable/ponpon_mark" android:importantForAccessibility="no" />
+        <TextView android:id="@+id/wide_empty_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginStart="6dp" android:text="Add entry" android:textSize="11sp"
+            android:textStyle="bold" android:fontFamily="@font/inter" android:importantForAccessibility="no" />
+    </LinearLayout>
+</LinearLayout>

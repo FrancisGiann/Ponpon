@@ -62,6 +62,24 @@ object LedgerDisk {
     fun ifCurrent(context: Context, expected: String, operation: () -> Unit): Boolean = locked(context) { dir ->
         if (revision(File(dir, "ledger.json")) != expected) false else { operation(); true }
     }
+    /** Change only the existing widget-visibility preference under the same lock as ledger saves.
+     * An unreadable or missing ledger is left untouched; no financial fields are synthesized. */
+    fun toggleWidgetBalanceVisible(context: Context): Boolean? = locked(context) { dir ->
+        val current = File(dir, "ledger.json")
+        val old = bounded(current) ?: return@locked null
+        val ledger = try { JSONObject(String(old, Charsets.UTF_8)) } catch (_: Exception) { return@locked null }
+        if (ledger.optString("application") != "pocket_entry" || ledger.optString("currency") != "PHP" || ledger.optJSONArray("entries") == null) return@locked null
+        val preferences = ledger.optJSONObject("preferences") ?: return@locked null
+        val previousValue = preferences.opt("balanceWidgetVisible")
+        if (previousValue != null && previousValue !is Boolean) return@locked null
+        val visible = !(previousValue ?: false)
+        preferences.put("balanceWidgetVisible", visible)
+        val updated = ledger.toString().toByteArray(Charsets.UTF_8)
+        require(updated.size <= MAX_BYTES)
+        atomic(dir, "ledger.previous.json", old)
+        atomic(dir, "ledger.json", updated)
+        visible
+    }
     fun allowanceEnabled(context: Context): Boolean = locked(context) { dir ->
         try { bounded(File(dir, "ledger.json"))?.let { JSONObject(String(it, Charsets.UTF_8)).optJSONObject("allowance")?.optBoolean("enabled", false) } == true }
         catch (_: Exception) { false }

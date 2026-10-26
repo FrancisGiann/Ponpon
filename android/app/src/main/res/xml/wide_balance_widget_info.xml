@@ -1,0 +1,5 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp" android:minHeight="128dp" android:minResizeWidth="220dp" android:minResizeHeight="128dp"
+    android:targetCellWidth="4" android:targetCellHeight="2" android:initialLayout="@layout/wide_balance_widget"
+    android:previewLayout="@layout/wide_balance_widget" android:description="@string/widget_wide_description"
+    android:resizeMode="horizontal|vertical" android:updatePeriodMillis="0" android:widgetCategory="home_screen" />

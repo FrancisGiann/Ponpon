@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import java.text.NumberFormat
@@ -26,7 +27,7 @@ class BalanceEntryWidget : AppWidgetProvider() {
             return "${if (centavos < 0) "−" else ""}₱$whole.$fraction"
         }
 
-        fun views(context: Context, widgetId: Int): RemoteViews {
+        fun views(context: Context, widgetId: Int, hostWidthHint: Int? = null): RemoteViews {
             val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
             val theme = prefs.getString("theme", "system")
             val style = WidgetStyle.from(context, prefs.getString("visualStyle", "original"), theme)
@@ -54,23 +55,38 @@ class BalanceEntryWidget : AppWidgetProvider() {
             view.setTextColor(R.id.balance_widget_title, muted)
             view.setTextColor(R.id.balance_widget_amount, if (visible && balance < 0 && count > 0) style.danger else ink)
             view.setTextColor(R.id.balance_widget_scope, muted)
+            view.setImageViewResource(R.id.balance_widget_visibility_icon,
+                if (visible) R.drawable.widget_visibility else R.drawable.widget_visibility_off)
+            view.setInt(R.id.balance_widget_visibility_icon, "setColorFilter", muted)
+            view.setContentDescription(R.id.balance_widget_visibility, if (visible) "Hide balance" else "Show balance")
+            view.setViewVisibility(R.id.balance_widget_visibility, if (synced) View.VISIBLE else View.GONE)
+            view.setOnClickPendingIntent(R.id.balance_widget_visibility, WideBalanceWidget.visibilityPending(context, widgetId))
             view.setTextColor(R.id.balance_widget_add_label, accent)
             view.setTextColor(R.id.balance_widget_compact_action, accent)
             view.setTextViewText(R.id.balance_widget_amount, amount)
             view.setTextViewText(R.id.balance_widget_scope, scope)
             view.setInt(R.id.balance_widget_add, "setBackgroundResource", if (style.name == "original") { if (dark) R.drawable.widget_cell_plum_dark else R.drawable.widget_cell_plum_light } else style.cellResource)
             view.setImageViewResource(R.id.balance_widget_add_icon, QuickEntryWidget.iconResource("income", dark))
-            val minHeight = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 128)
-            val compactType = context.resources.configuration.fontScale > 1.2f && minHeight < 160
-            view.setTextViewText(R.id.balance_widget_title, if (compactType) "Tracked" else "Tracked balance")
+            val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId)
+            val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 128)
+            val hostWidth = hostWidthHint ?: options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH,
+                options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 128))
+            val narrow = hostWidth < 180
+            val compactType = minHeight < 160
+            view.setTextViewText(R.id.balance_widget_title,
+                if (hostWidth < 200 || context.resources.configuration.fontScale > 1.2f) "Balance" else "Tracked balance")
+            if (hostWidth < 140 && context.resources.configuration.fontScale > 1.2f) {
+                view.setTextViewTextSize(R.id.balance_widget_title, TypedValue.COMPLEX_UNIT_SP, 9f)
+            }
             view.setViewVisibility(R.id.balance_widget_scope, if (compactType) View.GONE else View.VISIBLE)
-            view.setViewVisibility(R.id.balance_widget_add_icon, if (compactType) View.GONE else View.VISIBLE)
+            view.setViewVisibility(R.id.balance_widget_add_icon, if (compactType || narrow) View.GONE else View.VISIBLE)
             view.setViewVisibility(R.id.balance_widget_add_label, if (compactType) View.GONE else View.VISIBLE)
+            view.setTextViewText(R.id.balance_widget_add_label, if (narrow) "Add" else "Add entry")
             view.setViewVisibility(R.id.balance_widget_compact_action, if (compactType) View.VISIBLE else View.GONE)
             view.setTextViewText(R.id.balance_widget_compact_action, when {
                 !synced -> "Open to sync\nAdd entry"
                 count == 0 -> "No active wallets\nAdd entry"
-                else -> "$count active ${if (count == 1) "wallet" else "wallets"}\nAdd entry"
+                else -> "$count ${if (count == 1) "wallet" else "wallets"}\nAdd entry"
             })
             val readout = when {
                 !synced -> "Tracked balance. Open Ponpon to sync. Add an entry."

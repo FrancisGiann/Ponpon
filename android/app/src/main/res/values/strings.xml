@@ -6,5 +6,11 @@
     <string name="widget_compact_description">Compact entry with four categories. No amounts or notes.</string>
     <string name="widget_balance_name">Ponpon · Balance (2 × 2)</string>
     <string name="widget_balance_description">Total tracked active-wallet balance. Amount hidden by default. Tap to add an entry and choose a wallet.</string>
+    <string name="widget_kind_name">Ponpon · Income &amp; expense (2 × 2)</string>
+    <string name="widget_kind_description">Open an income or expense draft directly. Choose a wallet to save.</string>
+    <string name="widget_wallet_name">Ponpon · Wallet overview (4 × 4)</string>
+    <string name="widget_wallet_description">Total and active wallet balances. Amounts hidden by default. Tap a wallet to add an entry.</string>
+    <string name="widget_wide_name">Ponpon · Balance &amp; categories (4 × 2)</string>
+    <string name="widget_wide_description">Tracked balance, Add entry and your chosen category shortcuts. Amount hidden by default.</string>
     <string name="quick_add_long">Add an entry in Ponpon</string>
 </resources>

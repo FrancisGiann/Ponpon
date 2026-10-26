@@ -14,4 +14,21 @@ class QuickEntryPolicyTest {
             assertNull(uri, QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, uri))
         }
     }
+    @Test fun kindAndWalletRoutesRequireValidPathsAndWidgetIds() {
+        assertEquals("income", QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, "pocketentry://kind/income?widget=3")?.kind)
+        assertEquals("expense", QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, "pocketentry://kind/expense?widget=3")?.kind)
+        assertEquals("cash", QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, "pocketentry://wallet/cash?widget=3")?.walletId)
+        for (uri in listOf("pocketentry://kind/transfer?widget=3", "pocketentry://wallet/cash?widget=0", "pocketentry://wallet/cash?amount=1")) {
+            assertNull(QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, uri))
+        }
+    }
+    @Test fun wideCategoryRoutesCarryKindWithoutAmountOrWallet() {
+        assertEquals(QuickEntryPolicy.Route("food", 8, kind = "expense"),
+            QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, "pocketentry://wide/expense/food?widget=8"))
+        assertEquals(QuickEntryPolicy.Route("income_allowance", 8, kind = "income"),
+            QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, "pocketentry://wide/income/income_allowance?widget=8"))
+        for (uri in listOf("pocketentry://wide/transfer/food?widget=8", "pocketentry://wide/income/food/extra?widget=8", "pocketentry://wide/income/food?wallet=cash", "pocketentry://wide/income/food?widget=0")) {
+            assertNull(QuickEntryPolicy.parse(QuickEntryPolicy.ACTION, uri))
+        }
+    }
 }

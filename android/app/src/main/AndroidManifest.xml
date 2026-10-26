@@ -46,5 +46,17 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/balance_entry_widget_info" />
         </receiver>
+        <receiver android:name=".KindEntryWidget" android:exported="false" android:label="@string/widget_kind_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/kind_entry_widget_info" />
+        </receiver>
+        <receiver android:name=".WalletOverviewWidget" android:exported="false" android:label="@string/widget_wallet_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wallet_overview_widget_info" />
+        </receiver>
+        <receiver android:name=".WideBalanceWidget" android:exported="false" android:label="@string/widget_wide_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/wide_balance_widget_info" />
+        </receiver>
     </application>
 </manifest>

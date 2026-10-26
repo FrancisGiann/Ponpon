@@ -10,6 +10,7 @@ part 'wallet_screens.dart';
 part 'allowance_page.dart';
 part 'bills_balance.dart';
 part 'style_page.dart';
+part 'widget_settings.dart';
 
 Future<void> openEntry(
   BuildContext context,
@@ -877,9 +878,190 @@ class HistoryPage extends StatefulWidget {
 }
 
 class _HistoryPageState extends State<HistoryPage> {
+  static const pageSize = 20;
+  final ScrollController historyScroll = ScrollController();
   EntryKind? kind;
   Wallet? wallet;
+  String? dateFilter;
+  String? categoryFilter;
   String query = '';
+  int page = 0;
+
+  @override
+  void dispose() {
+    historyScroll.dispose();
+    super.dispose();
+  }
+
+  void changeFilter(VoidCallback update) {
+    setState(() {
+      update();
+      page = 0;
+    });
+    if (historyScroll.hasClients) historyScroll.jumpTo(0);
+  }
+
+  void changePage(int next) {
+    setState(() => page = next);
+    if (historyScroll.hasClients) historyScroll.jumpTo(0);
+  }
+
+  Future<void> chooseHistoryDate() async {
+    var selected = dateFilter == null
+        ? widget.app.clock()
+        : localDay(dateFilter!);
+    final now = widget.app.clock();
+    final choice = await showPocketSheet<String>(
+      context: context,
+      builder: (ctx) => SheetFrame(
+        title: 'Filter by date',
+        height: 390,
+        action: Press(
+          label: 'Apply selected date',
+          onPressed: () => Navigator.pop(ctx, dayKey(selected)),
+          child: Text(
+            'Done',
+            style: textStyle(ctx, color: Palette.of(ctx).accent),
+          ),
+        ),
+        child: Column(
+          children: [
+            GroupRow('All dates', onTap: () => Navigator.pop(ctx, '')),
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.date,
+                initialDateTime: selected.isAfter(now) ? now : selected,
+                minimumDate: DateTime(1900),
+                maximumDate: DateTime(now.year, now.month, now.day, 23, 59),
+                onDateTimeChanged: (value) => selected = value,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) {
+      changeFilter(() => dateFilter = choice.isEmpty ? null : choice);
+    }
+  }
+
+  Future<void> chooseHistoryCategory() async {
+    final ledger = widget.app.ledger;
+    final ids =
+        ledger.active
+            .map((entry) => entry.categoryId)
+            .whereType<String>()
+            .toSet()
+            .toList()
+          ..sort(
+            (a, b) => (ledger.category(a)?.name ?? a).compareTo(
+              ledger.category(b)?.name ?? b,
+            ),
+          );
+    final choice = await showPocketSheet<String>(
+      context: context,
+      builder: (ctx) => SheetFrame(
+        title: 'Filter by category',
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          children: [
+            GroupRow(
+              'All categories',
+              selected: categoryFilter == null,
+              onTap: () => Navigator.pop(ctx, ''),
+            ),
+            for (final id in ids)
+              GroupRow(
+                ledger.category(id)?.name ?? id,
+                selected: categoryFilter == id,
+                onTap: () => Navigator.pop(ctx, id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) {
+      changeFilter(() => categoryFilter = choice.isEmpty ? null : choice);
+    }
+  }
+
+  Future<void> chooseHistoryFilters() async {
+    final ledger = widget.app.ledger;
+    final action = await showPocketSheet<String>(
+      context: context,
+      builder: (ctx) => SheetFrame(
+        title: 'Filters',
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          children: [
+            GroupRow(
+              'Date',
+              subtitle: dateFilter == null
+                  ? 'Any date'
+                  : shortDate(dateFilter!),
+              onTap: () => Navigator.pop(ctx, 'date'),
+            ),
+            GroupRow(
+              'Category',
+              subtitle: categoryFilter == null
+                  ? 'All categories'
+                  : ledger.category(categoryFilter!)?.name ?? categoryFilter!,
+              onTap: () => Navigator.pop(ctx, 'category'),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+              child: Text(
+                'Wallet',
+                style: textStyle(
+                  ctx,
+                  size: 13,
+                  color: Palette.of(ctx).secondary,
+                ),
+              ),
+            ),
+            GroupRow(
+              'All wallets',
+              selected: wallet == null,
+              onTap: () => Navigator.pop(ctx, 'wallet:'),
+            ),
+            for (final choice in ledger.wallets)
+              GroupRow(
+                choice.label,
+                selected: wallet == choice,
+                onTap: () => Navigator.pop(ctx, 'wallet:${choice.id}'),
+              ),
+            if (wallet != null || dateFilter != null || categoryFilter != null)
+              GroupRow(
+                'Clear filters',
+                onTap: () => Navigator.pop(ctx, 'clear'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'date') {
+      await chooseHistoryDate();
+    } else if (action == 'category') {
+      await chooseHistoryCategory();
+    } else if (action == 'clear') {
+      changeFilter(() {
+        wallet = null;
+        dateFilter = null;
+        categoryFilter = null;
+      });
+    } else if (action.startsWith('wallet:')) {
+      final id = action.substring('wallet:'.length);
+      changeFilter(
+        () => wallet = id.isEmpty
+            ? null
+            : ledger.wallets.where((choice) => choice.id == id).firstOrNull,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -889,27 +1071,69 @@ class _HistoryPageState extends State<HistoryPage> {
           (e) =>
               (kind == null || (e.adjustment == null && kind == e.kind)) &&
               (wallet == null || wallet == e.wallet || wallet == e.toWallet) &&
+              (dateFilter == null || dateFilter == e.date) &&
+              (categoryFilter == null || categoryFilter == e.categoryId) &&
               ('${e.adjustment != null ? 'Balance adjustment' : l.category(e.categoryId)?.name ?? 'Transfer'} ${e.note} ${money(e.centavos)} ${moneyInput(e.centavos)} ${l.wallet(e.wallet)!.label} ${l.wallet(e.toWallet)?.label ?? ''}'
                   .toLowerCase()
                   .contains(query.toLowerCase())),
         )
         .toList();
+    final lastPage = entries.isEmpty ? 0 : (entries.length - 1) ~/ pageSize;
+    if (page > lastPage) page = lastPage;
+    final shownPage = page;
+    final start = shownPage * pageSize;
+    final pageEntries = entries.skip(start).take(pageSize).toList();
+    final appliedFilters = [
+      if (wallet != null) wallet!.label,
+      if (dateFilter != null) shortDate(dateFilter!),
+      if (categoryFilter != null)
+        l.category(categoryFilter!)?.name ?? categoryFilter!,
+    ];
     return Column(
       children: [
-        PageHeading(
-          'History',
-          subtitle: 'Every entry, easy to change.',
-          trailing: Press(
-            label: 'Add entry from History',
-            onPressed: () => openEntry(context, widget.app),
-            padding: const EdgeInsets.all(12),
-            child: Icon(CupertinoIcons.plus, color: p.accent, size: 24),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 6, 24, 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'History',
+                      style: textStyle(
+                        context,
+                        size: 26,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      kind == null &&
+                              wallet == null &&
+                              dateFilter == null &&
+                              categoryFilter == null &&
+                              query.isEmpty
+                          ? '${l.active.length} entries · recent first'
+                          : '${entries.length} of ${l.active.length} entries match',
+                      style: textStyle(context, size: 12, color: p.secondary),
+                    ),
+                  ],
+                ),
+              ),
+              Press(
+                label: 'Add entry from History',
+                onPressed: () => openEntry(context, widget.app),
+                padding: const EdgeInsets.all(10),
+                child: Icon(CupertinoIcons.plus, color: p.accent, size: 22),
+              ),
+            ],
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: CupertinoSearchTextField(
-            placeholder: 'Category, note or amount',
+            placeholder: 'Search entries',
             placeholderStyle: textStyle(context, size: 15, color: p.secondary),
             style: textStyle(context, size: 15),
             decoration: BoxDecoration(
@@ -918,10 +1142,10 @@ class _HistoryPageState extends State<HistoryPage> {
               borderRadius: BorderRadius.circular(p.controlCorner(9)),
             ),
             itemColor: p.secondary,
-            onChanged: (value) => setState(() => query = value),
+            onChanged: (value) => changeFilter(() => query = value),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 4),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: SingleChildScrollView(
@@ -932,11 +1156,11 @@ class _HistoryPageState extends State<HistoryPage> {
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: Press(
-                      onPressed: () => setState(() => kind = choice),
+                      onPressed: () => changeFilter(() => kind = choice),
                       color: kind == choice ? p.tint : null,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 13,
-                        vertical: 12,
+                        horizontal: 11,
+                        vertical: 6,
                       ),
                       radius: p.controlCorner(12),
                       child: Text(
@@ -961,35 +1185,36 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 4),
+          child: Press(
+            key: const ValueKey('history-filters'),
+            label: appliedFilters.isEmpty
+                ? 'Filters'
+                : 'Filters: ${appliedFilters.join(', ')}',
+            onPressed: chooseHistoryFilters,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             child: Row(
               children: [
-                Text(
-                  'Wallet',
-                  style: textStyle(context, size: 12, color: p.secondary),
+                Icon(
+                  CupertinoIcons.slider_horizontal_3,
+                  color: p.accent,
+                  size: 17,
                 ),
                 const SizedBox(width: 8),
-                for (final choice in [null, ...l.wallets])
-                  Press(
-                    onPressed: () => setState(() => wallet = choice),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 10,
-                    ),
-                    child: Text(
-                      choice?.label ?? 'All',
-                      style: textStyle(
-                        context,
-                        size: 12,
-                        color: wallet == choice ? p.accent : p.secondary,
-                        weight: wallet == choice
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                      ),
+                Expanded(
+                  child: Text(
+                    appliedFilters.isEmpty
+                        ? 'Filters'
+                        : appliedFilters.join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textStyle(
+                      context,
+                      size: 12,
+                      color: appliedFilters.isEmpty ? p.secondary : p.accent,
                     ),
                   ),
+                ),
               ],
             ),
           ),
@@ -1013,11 +1238,12 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                 )
               : ListView.builder(
+                  controller: historyScroll,
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                  itemCount: entries.length,
+                  itemCount: pageEntries.length,
                   itemBuilder: (context, i) {
-                    final e = entries[i];
-                    final heading = i == 0 || entries[i - 1].date != e.date;
+                    final e = pageEntries[i];
+                    final heading = i == 0 || pageEntries[i - 1].date != e.date;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1040,8 +1266,8 @@ class _HistoryPageState extends State<HistoryPage> {
                           padding: EdgeInsets.zero,
                           roundTop: heading,
                           roundBottom:
-                              i == entries.length - 1 ||
-                              entries[i + 1].date != e.date,
+                              i == pageEntries.length - 1 ||
+                              pageEntries[i + 1].date != e.date,
                           child: Column(
                             children: [
                               EntryRow(
@@ -1052,8 +1278,8 @@ class _HistoryPageState extends State<HistoryPage> {
                                   EntryDetailPage(app: widget.app, id: e.id),
                                 ),
                               ),
-                              if (i < entries.length - 1 &&
-                                  entries[i + 1].date == e.date)
+                              if (i < pageEntries.length - 1 &&
+                                  pageEntries[i + 1].date == e.date)
                                 const Padding(
                                   padding: EdgeInsets.only(left: 70),
                                   child: Rule(),
@@ -1066,6 +1292,46 @@ class _HistoryPageState extends State<HistoryPage> {
                   },
                 ),
         ),
+        if (entries.length > pageSize)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              children: [
+                Press(
+                  key: const ValueKey('history-previous-page'),
+                  label: 'Previous history page',
+                  onPressed: shownPage == 0
+                      ? null
+                      : () => changePage(shownPage - 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  child: const Text('Previous'),
+                ),
+                Text(
+                  '${start + 1}–${start + pageEntries.length} of ${entries.length}',
+                  key: const ValueKey('history-page-range'),
+                  style: textStyle(context, size: 12, color: p.secondary),
+                ),
+                Press(
+                  key: const ValueKey('history-next-page'),
+                  label: 'Next history page',
+                  onPressed: shownPage == lastPage
+                      ? null
+                      : () => changePage(shownPage + 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  child: const Text('Next'),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -1795,6 +2061,225 @@ class _WalletsPageState extends State<WalletsPage> {
   );
 }
 
+class WideWidgetPreview extends StatelessWidget {
+  const WideWidgetPreview({super.key, required this.ledger, this.height = 148});
+  final Ledger ledger;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final largeType = MediaQuery.textScalerOf(context).scale(10) > 12;
+    final count = ledger.availableWallets.length;
+    final amount = count == 0
+        ? '—'
+        : ledger.preferences.balanceWidgetVisible
+        ? money(ledger.activeWalletBalance)
+        : '••••';
+    final categories = ledger.quickCategories;
+    return Semantics(
+      label: 'Wide widget preview',
+      child: Container(
+        height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: p.style == VisualStyle.original && p.dark
+              ? p.surface
+              : p.background,
+          border: Border.all(color: p.line),
+          borderRadius: BorderRadius.circular(p.cardRadius),
+        ),
+        child: Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(height: 14),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  amount,
+                                  style: textStyle(
+                                    context,
+                                    size: largeType ? 18 : 28,
+                                    weight: FontWeight.w700,
+                                    color:
+                                        ledger.activeWalletBalance < 0 &&
+                                            ledger
+                                                .preferences
+                                                .balanceWidgetVisible
+                                        ? p.danger
+                                        : p.ink,
+                                    tabular: true,
+                                  ).copyWith(height: 1),
+                                ),
+                              ),
+                              Text(
+                                '$count active ${count == 1 ? 'wallet' : 'wallets'}',
+                                style: textStyle(
+                                  context,
+                                  size: largeType ? 9 : 10,
+                                  color: p.secondary,
+                                ).copyWith(height: 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Transform.translate(
+                            offset: const Offset(0, -24),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Tracked balance',
+                                  maxLines: 1,
+                                  style: textStyle(
+                                    context,
+                                    size: largeType ? 9 : 11,
+                                    weight: FontWeight.w700,
+                                    color: p.secondary,
+                                  ).copyWith(height: 1),
+                                ),
+                                const SizedBox(width: 4),
+                                Semantics(
+                                  label: ledger.preferences.balanceWidgetVisible
+                                      ? 'Hide balance'
+                                      : 'Show balance',
+                                  child: SizedBox(
+                                    width: 40,
+                                    height: 40,
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Icon(
+                                        ledger.preferences.balanceWidgetVisible
+                                            ? CupertinoIcons.eye
+                                            : CupertinoIcons.eye_slash,
+                                        size: 20,
+                                        color: p.secondary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: p.tint,
+                        borderRadius: BorderRadius.circular(p.controlRadius),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            CupertinoIcons.arrow_down_left,
+                            size: 17,
+                            color: p.green,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Add entry',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textStyle(
+                                context,
+                                size: 10,
+                                weight: FontWeight.w700,
+                                color: p.accent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 2),
+            SizedBox(
+              height: 48,
+              child: categories.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Choose shortcuts in Categories',
+                        style: textStyle(context, size: 11, color: p.secondary),
+                      ),
+                    )
+                  : Row(
+                      children: [
+                        for (final category in categories)
+                          Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: p.line),
+                                borderRadius: BorderRadius.circular(
+                                  p.controlRadius,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    categoryIcon(category.icon),
+                                    size: 20,
+                                    color: categoryColor(
+                                      context,
+                                      category.icon,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    category.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: textStyle(
+                                      context,
+                                      size: largeType ? 9 : 11,
+                                      weight: FontWeight.w700,
+                                      color: categoryColor(
+                                        context,
+                                        category.icon,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.app});
   final AppController app;
@@ -2059,50 +2544,6 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
-  Future<void> pinWidget({bool compact = false, bool balance = false}) async {
-    try {
-      final requested =
-          await widget.app.bridge?.pinWidget(
-            compact: compact,
-            balance: balance,
-          ) ??
-          false;
-      if (mounted) {
-        await showCupertinoDialog<void>(
-          context: context,
-          builder: (ctx) => CupertinoAlertDialog(
-            title: Text(requested ? 'Add Ponpon' : 'Add from your home screen'),
-            content: Text(
-              requested
-                  ? 'Confirm the ${balance
-                        ? 'balance 2 × 2'
-                        : compact
-                        ? 'compact 2 × 2'
-                        : 'larger'} widget in your launcher. ${balance ? 'Amounts stay hidden unless you enable Show balance on widget.' : 'It shows categories only.'} Your launcher controls the final grid size.'
-                  : 'Long-press an empty area on your home screen, choose Widgets, then Ponpon${balance
-                        ? ' · Balance (2 × 2)'
-                        : compact
-                        ? ' · Quick entry (2 × 2)'
-                        : ''}. Your launcher controls the final grid size. You can also long-press the app icon for Quick add.',
-            ),
-            actions: [
-              CupertinoDialogAction(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Done'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => error = 'Use your launcher’s Widgets menu to add Ponpon.',
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.app,
@@ -2150,22 +2591,11 @@ class _SettingsPageState extends State<SettingsPage>
                         pushPocket<void>(context, CategoriesPage(app: app)),
                   ),
                   GroupRow(
-                    'Compact home widget',
-                    subtitle: '2 × 2 · categories only',
-                    icon: CupertinoIcons.square_grid_2x2,
-                    onTap: () => pinWidget(compact: true),
-                  ),
-                  GroupRow(
-                    'Balance home widget',
-                    subtitle: '2 × 2 · tap to add an entry',
-                    icon: CupertinoIcons.money_dollar_circle,
-                    onTap: () => pinWidget(balance: true),
-                  ),
-                  GroupRow(
-                    'Home-screen widget',
-                    subtitle: 'Categories only. No amounts or notes.',
+                    'Widgets',
+                    subtitle: 'Layouts, previews and balance visibility',
                     icon: CupertinoIcons.rectangle_grid_1x2,
-                    onTap: () => pinWidget(),
+                    onTap: () =>
+                        pushPocket<void>(context, WidgetsPage(app: app)),
                     last: true,
                   ),
                 ],
@@ -2262,20 +2692,6 @@ class _SettingsPageState extends State<SettingsPage>
                           ? null
                           : (value) => app.preferences(
                               prefs.copy(reduceMotion: value),
-                            ),
-                    ),
-                  ),
-                  GroupRow(
-                    'Show balance on widget',
-                    subtitle:
-                        'Visible on your home screen. Tracked amounts only.',
-                    trailing: PocketSwitch(
-                      label: 'Show balance on widget',
-                      value: prefs.balanceWidgetVisible,
-                      onChanged: app.busy
-                          ? null
-                          : (value) => app.preferences(
-                              prefs.copy(balanceWidgetVisible: value),
                             ),
                     ),
                   ),
@@ -2433,7 +2849,7 @@ class _SettingsPageState extends State<SettingsPage>
             ),
             const SizedBox(height: 18),
             Text(
- 'Ponpon 0.2.9 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
+              'Ponpon 0.2.15 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
               style: textStyle(context, size: 12, color: p.secondary),
             ),
             const SizedBox(height: 24),

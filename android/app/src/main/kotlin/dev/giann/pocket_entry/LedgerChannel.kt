@@ -15,6 +15,9 @@ class LedgerChannel(context: Context, messenger: BinaryMessenger) {
     companion object {
         private val main = Handler(Looper.getMainLooper())
         private val listeners = mutableMapOf<String, MethodChannel>()
+        fun notifyChanged() {
+            main.post { listeners.values.toList().forEach { it.invokeMethod("ledgerChanged", null) } }
+        }
     }
     init {
         listeners[owner] = channel

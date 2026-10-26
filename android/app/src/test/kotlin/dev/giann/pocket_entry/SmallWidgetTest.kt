@@ -36,6 +36,63 @@ class SmallWidgetTest {
         val directory = File(requireNotNull(System.getProperty("pocket.previewDir"))); directory.mkdirs()
         File(directory, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
+    @Test fun wideWidgetPreviewUsesTheConfiguredFourShortcuts() {
+        val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
+        try {
+            WidgetSnapshot.apply(context, mapOf(
+                "theme" to "light", "visualStyle" to "original",
+                "balanceCentavos" to 1245605L, "activeWalletCount" to 3,
+                "balanceWidgetVisible" to true,
+                "categories" to listOf(
+                    mapOf("id" to "food", "name" to "Food", "icon" to "food"),
+                    mapOf("id" to "travel", "name" to "Travel", "icon" to "travel"),
+                    mapOf("id" to "bills", "name" to "Bills", "icon" to "bills"),
+                    mapOf("id" to "income", "name" to "Income", "icon" to "income"),
+                ),
+            ))
+            val widget = WideBalanceWidget.views(context, 296).apply(context, FrameLayout(context))
+            size(widget, 330, 180)
+            assertEquals("₱12,456.05", widget.findViewById<TextView>(R.id.wide_balance).text.toString())
+            assertEquals("Bills", widget.findViewById<TextView>(R.id.wide_name_3).text.toString())
+            assertEquals("Income", widget.findViewById<TextView>(R.id.wide_name_4).text.toString())
+            capture(widget, 330, 180, "029-wide-merged-original-light")
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+    @Test fun wideWidgetAtObservedLauncherSizeKeepsFullTitleAndLargeContent() {
+        val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
+        try {
+            WidgetSnapshot.apply(context, mapOf(
+                "theme" to "light", "visualStyle" to "powderBlue",
+                "balanceCentavos" to 1234567L, "activeWalletCount" to 2,
+                "balanceWidgetVisible" to true,
+                "categories" to listOf(
+                    mapOf("id" to "food", "name" to "Food", "icon" to "food"),
+                    mapOf("id" to "travel", "name" to "Travel", "icon" to "travel"),
+                    mapOf("id" to "bills", "name" to "Bills", "icon" to "bills"),
+                    mapOf("id" to "income", "name" to "Income", "icon" to "income"),
+                ),
+            ))
+            val widget = WideBalanceWidget.views(context, 297, 370).apply(context, FrameLayout(context))
+            size(widget, 370, 198)
+            assertEquals("Tracked balance", widget.findViewById<TextView>(R.id.wide_title).text.toString())
+            val amount = widget.findViewById<TextView>(R.id.wide_balance)
+            assertEquals("₱12,345.67", amount.text.toString())
+            assertEquals(0, amount.layout.getEllipsisCount(0))
+            val eye = widget.findViewById<View>(R.id.wide_visibility)
+            assertTrue(eye.width >= 48 && eye.height >= 48)
+            assertTrue(eye.right <= widget.findViewById<View>(R.id.wide_balance_area).right)
+            for (id in listOf(R.id.wide_category_1, R.id.wide_category_2, R.id.wide_category_3, R.id.wide_category_4)) {
+                val tile = widget.findViewById<View>(id)
+                assertTrue(tile.width >= 48 && tile.height >= 48)
+                assertTrue(tile.bottom <= widget.height)
+            }
+            capture(widget, 370, 198, "030-wide-observed-host-powder-blue-light")
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
     @Test fun providersAreSeparatePrivateAndOfferTwoByTwoWhileLargeWidgetIsUnchanged() {
         for (provider in listOf(CompactEntryWidget::class.java, BalanceEntryWidget::class.java)) {
             val info = context.packageManager.getReceiverInfo(ComponentName(context, provider), PackageManager.GET_META_DATA)
@@ -95,6 +152,45 @@ class SmallWidgetTest {
         assertFalse(intent.hasExtra("wallet")); assertFalse(intent.hasExtra("amount"))
         assertTrue(QuickEntryWidget.pending(context, 76, 0, null).isImmutable)
     }
+    @Test fun compactBalanceEyeStaysInlineWithLabelAndSeparateFromAmountAndAdd() {
+        val original = Configuration(context.resources.configuration)
+        val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
+        try {
+            for (theme in listOf("light", "dark")) for (scale in listOf(1f, 1.5f)) for (visible in listOf(false, true)) {
+                val config = Configuration(original).apply { fontScale = scale }
+                @Suppress("DEPRECATION") context.resources.updateConfiguration(config, context.resources.displayMetrics)
+                prefs.edit().clear().putString("theme", theme).putLong("balanceUpdatedAt", 1)
+                    .putLong("balanceCentavos", 632750).putInt("activeWalletCount", 3)
+                    .putBoolean("balanceVisible", visible).commit()
+                for (width in listOf(128, 148, 180)) {
+                    val view = BalanceEntryWidget.views(context, 88, width).apply(context, FrameLayout(context))
+                    size(view, width, width)
+                    val header = view.findViewById<View>(R.id.balance_widget_header)
+                    val title = view.findViewById<TextView>(R.id.balance_widget_title)
+                    val eye = view.findViewById<View>(R.id.balance_widget_visibility)
+                    val eyeGlyph = view.findViewById<View>(R.id.balance_widget_visibility_icon)
+                    val amount = view.findViewById<TextView>(R.id.balance_widget_amount)
+                    val add = view.findViewById<View>(R.id.balance_widget_add)
+                    assertEquals(header.top, header.top + eye.top)
+                    assertTrue("eye must sit beside label", eye.left >= title.right && eye.left - title.right <= 6)
+                    assertEquals("no extra icon inset", 0, eyeGlyph.left)
+                    assertTrue("eye fits header $width/$scale: eye=${eye.right} header=${header.width} title=${title.width} text=${title.text}", eye.right <= header.width)
+                    assertTrue("eye overlaps amount at $width/$scale", header.top + eye.bottom <= amount.top)
+                    assertTrue("48dp eye target", eye.width >= 48 && eye.height >= 48)
+                    assertTrue("48dp Add target", add.width >= 48 && add.height >= 48)
+                    assertTrue("footer within widget", add.bottom <= view.height)
+                    assertEquals(if (visible) "Hide balance" else "Show balance", eye.contentDescription)
+                    assertEquals(if (visible) "₱6,327.50" else "••••", amount.text.toString())
+                    assertEquals(0, title.layout.getEllipsisCount(0))
+                    if (width == 148) capture(view, width, width,
+                        "031-inline-eye-$theme-${if (visible) "shown" else "hidden"}-${if (scale > 1) "large" else "normal"}")
+                }
+            }
+        } finally {
+            @Suppress("DEPRECATION") context.resources.updateConfiguration(original, context.resources.displayMetrics)
+            prefs.edit().clear().commit()
+        }
+    }
     @Test fun visibilityToggleImmediatelyReplacesAnExistingShownRemoteView() {
         val prefs = context.getSharedPreferences(QuickEntryWidget.PREFS, Context.MODE_PRIVATE)
         prefs.edit().clear().putLong("balanceUpdatedAt", 1).putLong("balanceCentavos", 632750)
@@ -118,7 +214,7 @@ class SmallWidgetTest {
                 prefs.edit().clear().putString("theme", theme).putLong("balanceUpdatedAt", 1).putLong("balanceCentavos", amount)
                     .putInt("activeWalletCount", count).putBoolean("balanceVisible", true).commit()
                 for (width in listOf(128, 148, 180, 240)) {
-                    val view = BalanceEntryWidget.views(context, 81).apply(context, FrameLayout(context))
+                    val view = BalanceEntryWidget.views(context, 81, width).apply(context, FrameLayout(context))
                     size(view, width, width)
                     val text = view.findViewById<TextView>(R.id.balance_widget_amount)
                     assertEquals(if (count == 0) "—" else BalanceEntryWidget.money(amount), text.text.toString())
@@ -130,12 +226,12 @@ class SmallWidgetTest {
                     }
                     val add = view.findViewById<View>(R.id.balance_widget_add)
                     assertTrue(add.height >= 48 && add.width >= 48)
-                    assertTrue("footer within root", add.bottom <= view.height - 8)
+                    assertTrue("footer within root", add.bottom <= view.height - view.paddingBottom)
                     assertTrue(add.isClickable)
                     if (scale > 1) {
-                        assertEquals("Tracked", view.findViewById<TextView>(R.id.balance_widget_title).text.toString())
+                        assertEquals("Balance", view.findViewById<TextView>(R.id.balance_widget_title).text.toString())
                         val action = view.findViewById<TextView>(R.id.balance_widget_compact_action)
-                        assertTrue(action.text.contains(if (count == 0) "No active wallets" else "$count active wallets"))
+                        assertTrue(action.text.contains(if (count == 0) "No active wallets" else "$count wallets"))
                         assertTrue(action.layout.getLineBottom(action.layout.lineCount - 1) <= action.height)
                         for (line in 0 until action.layout.lineCount) assertEquals(0, action.layout.getEllipsisCount(line))
                     }
@@ -305,6 +401,28 @@ class SmallWidgetTest {
                     }
                     assertFalse(allText(large).contains("123"))
                     capture(large, 330, 180, "029-style-widget-quick-large-$style-$theme-$scale")
+
+                    prefs.edit().putBoolean("balanceVisible", false).commit()
+                    val wideHidden = WideBalanceWidget.views(context, 294)
+                        .apply(context, FrameLayout(context))
+                    size(wideHidden, 250, 128)
+                    assertEquals("••••", wideHidden.findViewById<TextView>(R.id.wide_balance).text.toString())
+                    assertFalse(allText(wideHidden).contains("123"))
+                    for (id in listOf(R.id.wide_category_1, R.id.wide_category_2, R.id.wide_category_3, R.id.wide_category_4)) {
+                        val cell = wideHidden.findViewById<View>(id)
+                        assertTrue("wide category target too small: $style/$theme/$scale", cell.width >= 48 && cell.height >= 48 && cell.isClickable)
+                    }
+                    val add = wideHidden.findViewById<View>(R.id.wide_add)
+                    assertTrue(add.width >= 48 && add.height >= 48 && add.isClickable)
+                    prefs.edit().putBoolean("balanceVisible", true).commit()
+                    val wide = WideBalanceWidget.views(context, 295)
+                        .apply(context, FrameLayout(context))
+                    size(wide, 330, 180)
+                    assertEquals("−₱123.45", wide.findViewById<TextView>(R.id.wide_balance).text.toString())
+                    assertEquals(tokens.backgroundColor, (wide.background as GradientDrawable).color!!.defaultColor)
+                    assertEquals(QuickEntryWidget.categoryColor("food", tokens.dark),
+                        wide.findViewById<TextView>(R.id.wide_name_1).currentTextColor)
+                    capture(wide, 330, 180, "029-style-widget-wide-$style-$theme-$scale")
                 }
             }
         } finally {

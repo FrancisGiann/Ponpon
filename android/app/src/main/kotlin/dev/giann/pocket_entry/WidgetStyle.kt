@@ -10,6 +10,7 @@ data class WidgetStyle(
     val dark: Boolean,
     val backgroundResource: Int,
     val cellResource: Int,
+    val categoryOutlineResource: Int,
     val backgroundColor: Int,
     val cellColor: Int,
     val ink: Int,
@@ -46,13 +47,20 @@ data class WidgetStyle(
                 "powderBlue" -> if (dark) R.drawable.widget_cell_powder_blue_dark else R.drawable.widget_cell_powder_blue
                 "notebook" -> if (dark) R.drawable.widget_cell_notebook_dark else R.drawable.widget_cell_notebook
                 "midnight" -> R.drawable.widget_cell_midnight
-                else -> R.drawable.widget_chip
+                else -> if (dark) R.drawable.widget_chip_dark else R.drawable.widget_chip
+            }
+            val categoryOutline = when (style) {
+                "powderBlue" -> if (dark) R.drawable.widget_category_outline_powder_blue_dark else R.drawable.widget_category_outline_powder_blue
+                "notebook" -> if (dark) R.drawable.widget_category_outline_notebook_dark else R.drawable.widget_category_outline_notebook
+                "midnight" -> R.drawable.widget_category_outline_midnight
+                else -> if (dark) R.drawable.widget_category_outline_dark else R.drawable.widget_category_outline
             }
             return WidgetStyle(
                 style,
                 dark,
                 root,
                 cell,
+                categoryOutline,
                 Color.parseColor(colors[0]),
                 Color.parseColor(colors[1]),
                 Color.parseColor(colors[2]),

@@ -1,0 +1,18 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/kind_root"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical"
+    android:padding="8dp" android:background="@drawable/widget_background">
+    <TextView android:id="@+id/kind_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="Quick add" android:textSize="14sp" android:textStyle="bold" android:fontFamily="@font/inter" android:maxLines="1" />
+    <LinearLayout android:id="@+id/kind_expense" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:minHeight="48dp" android:gravity="center" android:background="@drawable/widget_chip" android:layout_marginTop="6dp"
+        android:contentDescription="Add expense entry, choose a wallet to save">
+        <TextView android:id="@+id/kind_expense_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="−  Expense" android:textSize="15sp" android:textStyle="bold" android:fontFamily="@font/inter" android:importantForAccessibility="no" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/kind_income" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:minHeight="48dp" android:gravity="center" android:background="@drawable/widget_chip" android:layout_marginTop="6dp"
+        android:contentDescription="Add income entry, choose a wallet to save">
+        <TextView android:id="@+id/kind_income_label" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="+  Income" android:textSize="15sp" android:textStyle="bold" android:fontFamily="@font/inter" android:importantForAccessibility="no" />
+    </LinearLayout>
+</LinearLayout>

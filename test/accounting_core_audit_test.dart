@@ -368,7 +368,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(EntryRow), findsNWidgets(3));
-      await tester.tap(find.text('GCash').first);
+      await tester.tap(find.byKey(const ValueKey('history-filters')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byWidgetPredicate((w) => w is GroupRow && w.title == 'GCash'),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(EntryRow), findsNWidgets(2));
       await tester.tap(find.text('Expenses'));

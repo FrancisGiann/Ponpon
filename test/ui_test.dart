@@ -245,6 +245,49 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  testWidgets(
+    'widget shortcuts select kind and active wallet without recording money',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      final app = fixture(synthetic(populated: false));
+      addTearDown(app.dispose);
+      await tester.pumpWidget(
+        PocketApp(
+          controller: app,
+          initialEntry: const {'kind': 'income', 'walletId': 'gcash'},
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(app.draft!.kind, EntryKind.income);
+      expect(app.draft!.from, Wallet.gcash);
+      expect(app.draft!.amount, isEmpty);
+      expect(app.ledger.active, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
+    'wide widget category route opens an income draft without saving',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      final app = fixture(synthetic(populated: false));
+      addTearDown(app.dispose);
+      await tester.pumpWidget(
+        PocketApp(
+          controller: app,
+          initialEntry: const {
+            'kind': 'income',
+            'categoryId': 'income_allowance',
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(app.draft!.kind, EntryKind.income);
+      expect(app.draft!.categoryId, 'income_allowance');
+      expect(app.draft!.amount, isEmpty);
+      expect(app.ledger.active, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
   testWidgets('reduced motion eliminates authored page and press transitions', (
     tester,
   ) async {
@@ -373,7 +416,11 @@ void main() {
       final finder = find.byWidgetPredicate(
         (w) => w is PocketSwitch && w.label == label,
       );
-      await tester.ensureVisible(finder);
+      await tester.scrollUntilVisible(
+        finder,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       expect(tester.getSize(finder).height, greaterThanOrEqualTo(48));
     }
@@ -419,7 +466,11 @@ void main() {
     await tester.pumpAndSettle();
     for (final value in ['system', 'light', 'dark']) {
       final finder = find.byKey(ValueKey('theme-$value'));
-      await tester.ensureVisible(finder);
+      await tester.scrollUntilVisible(
+        finder,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pumpAndSettle();
       expect(tester.getSize(finder).height, greaterThanOrEqualTo(48));
       expect(tester.getSize(finder).width, greaterThanOrEqualTo(48));

@@ -1,21 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/balance_widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:padding="8dp" android:background="@drawable/widget_background"
+    android:orientation="vertical" android:paddingHorizontal="8dp" android:paddingVertical="2dp" android:background="@drawable/widget_background"
     android:importantForAccessibility="yes" android:contentDescription="Tracked balance. Amount hidden. Add an entry.">
-    <TextView android:id="@+id/balance_widget_title" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="Tracked balance" android:textSize="11sp" android:fontFamily="@font/inter" android:maxLines="2"
-        android:importantForAccessibility="no" />
+    <LinearLayout android:id="@+id/balance_widget_header" android:layout_width="match_parent"
+        android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/balance_widget_title" android:layout_width="wrap_content"
+            android:layout_height="wrap_content" android:text="Tracked balance" android:textSize="11sp"
+            android:fontFamily="@font/inter" android:maxLines="1" android:ellipsize="end"
+            android:importantForAccessibility="no" />
+        <FrameLayout android:id="@+id/balance_widget_visibility" android:layout_width="48dp"
+            android:layout_height="48dp" android:layout_marginStart="4dp" android:contentDescription="Show balance"
+            android:importantForAccessibility="yes">
+            <ImageView android:id="@+id/balance_widget_visibility_icon" android:layout_width="20dp"
+                android:layout_height="20dp" android:layout_gravity="start|center_vertical"
+                android:src="@drawable/widget_visibility_off" android:importantForAccessibility="no" />
+        </FrameLayout>
+    </LinearLayout>
     <TextView android:id="@+id/balance_widget_amount" android:layout_width="match_parent" android:layout_height="0dp"
         android:layout_weight="1" android:minHeight="28dp" android:text="••••" android:textSize="26sp"
         android:textStyle="bold" android:fontFamily="@font/inter" android:fontFeatureSettings="tnum" android:includeFontPadding="false"
         android:gravity="center_vertical" android:maxLines="2" android:autoSizeTextType="uniform"
-        android:autoSizeMinTextSize="10sp" android:autoSizeMaxTextSize="26sp" android:autoSizeStepGranularity="1sp"
+        android:autoSizeMinTextSize="7sp" android:autoSizeMaxTextSize="26sp" android:autoSizeStepGranularity="1sp"
         android:importantForAccessibility="no" />
     <TextView android:id="@+id/balance_widget_scope" android:layout_width="match_parent" android:layout_height="wrap_content"
         android:text="Amount hidden" android:textSize="10sp" android:fontFamily="@font/inter" android:maxLines="1"
-        android:layout_marginBottom="4dp" android:importantForAccessibility="no" />
-    <LinearLayout android:id="@+id/balance_widget_add" android:layout_width="match_parent" android:layout_height="48dp"
+        android:importantForAccessibility="no" />
+    <LinearLayout android:id="@+id/balance_widget_add" android:layout_width="match_parent"
+        android:layout_height="48dp"
         android:orientation="horizontal" android:gravity="center" android:background="@drawable/widget_cell_plum_light"
         android:contentDescription="Add an entry, choose a wallet to save" android:importantForAccessibility="yes">
         <ImageView android:id="@+id/balance_widget_add_icon" android:layout_width="18dp" android:layout_height="18dp"
