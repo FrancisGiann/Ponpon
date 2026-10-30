@@ -672,7 +672,7 @@ void main() {
       final app = fixture(
         synthetic(populated: false).copy(
           wallets: [...Wallet.values, maya],
-          openings: {Wallet.cash: 0, Wallet.gcash: 0, maya: 0},
+          openings: {Wallet.cash: 300, Wallet.gcash: 0, maya: 0},
         ),
       );
       addTearDown(app.dispose);
@@ -690,15 +690,31 @@ void main() {
       await tester.tap(find.text('Record Cash → Cash'));
       await tester.pumpAndSettle();
       expect(app.ledger.entries, isEmpty);
+      expect(
+        find.text('Choose two different wallets for a transfer.'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const ValueKey('transfer-to')));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('wallet-choice-fixture_maya')),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Now ₱3.00'), findsOneWidget);
+      await tester.tap(find.text('Transfer all'));
+      await tester.pumpAndSettle();
+      expect(app.draft!.amount, '3.00');
+      expect(find.text('After ₱0.00'), findsOneWidget);
+      expect(find.text('After ₱3.00'), findsOneWidget);
+      expect(
+        find.textContaining('Active wallet total now: ₱3.00'),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Record Cash → Maya'));
       await tester.pumpAndSettle();
       expect(app.ledger.active.single.toWallet, maya);
+      expect(app.ledger.calculate(Wallet.cash).balance, 0);
+      expect(app.ledger.calculate(maya).balance, 300);
       expect(app.ledger.total(EntryKind.expense), 0);
       await tester.pumpWidget(const SizedBox.shrink());
     },

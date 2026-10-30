@@ -1,7 +1,7 @@
 name: pocket_entry
 description: Ponpon Budget & Expenses, a private offline ledger with explicit wallet entry.
 publish_to: none
-version: 0.2.15+17
+version: 0.2.16+18
 environment:
   sdk: '>=3.13.0 <4.0.0'
 dependencies:

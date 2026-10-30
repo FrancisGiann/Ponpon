@@ -50,7 +50,9 @@ void main() {
   );
   test('custom transfer, rename, archived history and backup keep stable references', () async {
     final app = AppController(
-      store: MemoryLedgerStore(custom()),
+      store: MemoryLedgerStore(
+        custom().copy(openings: {Wallet.cash: 0, Wallet.gcash: 1234, maya: 0}),
+      ),
       clock: () => DateTime(2026, 10, 5),
     );
     addTearDown(app.dispose);
@@ -63,7 +65,7 @@ void main() {
       ..amount = '12.34';
     expect(await app.saveDraft(Wallet.gcash), true);
     expect(app.ledger.calculate(maya).balance, 1234);
-    expect(app.ledger.calculate(Wallet.gcash).balance, -1234);
+    expect(app.ledger.calculate(Wallet.gcash).balance, 0);
     expect(app.ledger.total(EntryKind.income), 0);
     expect(app.ledger.total(EntryKind.expense), 0);
     await app.setWallet(maya.copy(label: 'School wallet', archived: true));

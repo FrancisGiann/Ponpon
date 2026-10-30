@@ -3,8 +3,35 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_entry/app_controller.dart';
+import 'package:pocket_entry/data/coordinated_store.dart';
 import 'package:pocket_entry/data/storage.dart';
 import 'package:pocket_entry/domain/ledger.dart';
+
+class SpendBeforeTransferStore extends MemoryLedgerStore {
+  SpendBeforeTransferStore(super.value);
+  bool conflictNext = true;
+
+  @override
+  Future<void> save(Ledger ledger) async {
+    if (conflictNext) {
+      conflictNext = false;
+      value = value.put(
+        Entry(
+          id: 'background_spend',
+          kind: EntryKind.expense,
+          centavos: 600,
+          date: '2026-10-12',
+          wallet: Wallet.cash,
+          categoryId: 'food',
+          createdAt: 2000,
+          updatedAt: 2000,
+        ),
+      );
+      throw const LedgerChangedException();
+    }
+    await super.save(ledger);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -89,6 +116,114 @@ void main() {
     expect(app.ledger.active.length, 2);
     expect(app.ledger.calculate(Wallet.gcash).balance, -2);
   });
+  test(
+    'transfers reject overdraw and invalid cents, then accept exact balance',
+    () async {
+      final initial = Ledger.empty().copy(
+        openings: {Wallet.cash: 1000, Wallet.gcash: 50},
+        preferences: const Preferences(haptics: false),
+      );
+      final store = MemoryLedgerStore(initial);
+      final app = AppController(
+        store: store,
+        clock: () => DateTime(2026, 10, 12),
+      );
+      addTearDown(app.dispose);
+      await app.initialize();
+      app.startDraft();
+      app.changeDraftKind(EntryKind.transfer);
+      app.draft!.amount = '10.01';
+      app.updateDraft();
+      expect(await app.saveDraft(Wallet.cash), false);
+      expect(app.storageError, contains('Not enough'));
+      expect(app.ledger.entries, isEmpty);
+      expect(store.writes, 0);
+
+      for (final amount in ['0', '-0.01', '1.001']) {
+        app.draft!.amount = amount;
+        app.updateDraft();
+        expect(await app.saveDraft(Wallet.cash), false, reason: amount);
+        expect(app.ledger.entries, isEmpty, reason: amount);
+      }
+
+      app.draft!.amount = '10.00';
+      app.updateDraft();
+      expect(await app.saveDraft(Wallet.cash), true);
+      expect(app.ledger.calculate(Wallet.cash).balance, 0);
+      expect(app.ledger.calculate(Wallet.gcash).balance, 1050);
+      expect(app.ledger.total(EntryKind.income), 0);
+      expect(app.ledger.total(EntryKind.expense), 0);
+    },
+  );
+  test('a concurrent spend refreshes a transfer draft and blocks a stale overdraw retry', () async {
+    final store = SpendBeforeTransferStore(
+      Ledger.empty().copy(
+        openings: {Wallet.cash: 1000, Wallet.gcash: 0},
+        preferences: const Preferences(haptics: false),
+      ),
+    );
+    final app = AppController(
+      store: store,
+      clock: () => DateTime(2026, 10, 12),
+    );
+    addTearDown(app.dispose);
+    await app.initialize();
+    app.startDraft();
+    app.changeDraftKind(EntryKind.transfer);
+    app.draft!.amount = '5.00';
+    app.updateDraft();
+    expect(await app.saveDraft(Wallet.cash), false);
+    expect(app.storageError, contains('Records changed in the background'));
+    expect(app.ledger.calculate(Wallet.cash).balance, 400);
+    expect(app.draft!.amount, '5.00');
+
+    expect(await app.saveDraft(Wallet.cash), false);
+    expect(app.storageError, contains('Available: ₱4.00'));
+    expect(store.value.active.single.id, 'background_spend');
+    expect(store.value.calculate(Wallet.cash).balance, 400);
+  });
+  test(
+    'editing a transfer replaces its posting before checking available funds',
+    () async {
+      const mariBank = Wallet(id: 'mari', label: 'MariBank', color: 'green');
+      var initial = Ledger.empty().copy(
+        wallets: [...Wallet.values, mariBank],
+        openings: {Wallet.cash: 2000, Wallet.gcash: 500, mariBank: 0},
+        preferences: const Preferences(haptics: false),
+      );
+      final old = Entry(
+        id: 'old_transfer',
+        kind: EntryKind.transfer,
+        centavos: 1000,
+        date: '2026-10-12',
+        wallet: Wallet.cash,
+        toWallet: Wallet.gcash,
+        createdAt: 1000,
+        updatedAt: 1000,
+      );
+      initial = initial.put(old);
+      final store = MemoryLedgerStore(initial);
+      final app = AppController(
+        store: store,
+        clock: () => DateTime(2026, 10, 12),
+      );
+      addTearDown(app.dispose);
+      await app.initialize();
+      app.startDraft(editing: old);
+      app.draft!
+        ..amount = '20.00'
+        ..to = mariBank;
+      app.updateDraft();
+
+      expect(await app.saveDraft(Wallet.cash), true);
+      expect(app.ledger.entries, hasLength(1));
+      expect(app.ledger.calculate(Wallet.cash).balance, 0);
+      expect(app.ledger.calculate(Wallet.gcash).balance, 500);
+      expect(app.ledger.calculate(mariBank).balance, 2000);
+      expect(app.ledger.total(EntryKind.income), 0);
+      expect(app.ledger.total(EntryKind.expense), 0);
+    },
+  );
   test('a failed save preserves the draft and ledger for retry', () async {
     final store = MemoryLedgerStore(
       Ledger.empty().copy(preferences: const Preferences(haptics: false)),

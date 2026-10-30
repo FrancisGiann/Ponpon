@@ -1,6 +1,6 @@
 # Ponpon · Budget & Expenses
 
-**Latest: [Ponpon 0.2.7](https://github.com/FrancisGiann/Ponpon/releases/tag/v0.2.7)** · ARM64 Android APK · version code 2009.
+**Latest: [Ponpon 0.2.16](https://github.com/FrancisGiann/Ponpon/releases/tag/v0.2.16)** · ARM64 Android APK · version code 2018.
 
 Ponpon is a personal Android budget tracker named after the owner’s dog, built for fast manual wallet recording. Cash and GCash are included; you can add your own named wallets. The whole interface uses a custom Cupertino-inspired design, offline Inter typography, compact navigation, rounded sheets, optional haptics and reduced motion.
 
@@ -20,7 +20,7 @@ Music: [Happy Beats & Business Moves Vol. 12](https://ende.app/en/song/12881-hap
 
 ## First use
 
-Install [Ponpon-0.2.7-arm64.apk](https://github.com/FrancisGiann/Ponpon/releases/download/v0.2.7/Ponpon-0.2.7-arm64.apk) on an ARM64 Android phone running Android 8.0 / API 26 or newer. Generated APKs stay outside Git; use the source build instructions below when working from a clone. The release uses the machine's existing development certificate; no new signing credentials were created. No account or wallet login is required. The app opens with empty records and zero opening balances.
+Install [Ponpon-0.2.16-arm64.apk](https://github.com/FrancisGiann/Ponpon/releases/download/v0.2.16/Ponpon-0.2.16-arm64.apk) on an ARM64 Android phone running Android 8.0 / API 26 or newer. Generated APKs stay outside Git; use the source build instructions below when working from a clone. The release uses the machine's existing development certificate; no new signing credentials were created. No account or wallet login is required. The app opens with empty records and zero opening balances.
 
 Tap **Get started** to see **Total tracked balance** and named active-wallet balances at the top of Today. A fresh install shows ₱0.00 across Cash and GCash. **All N** opens the full active-wallet breakdown. Tap **Add an entry** below the balances to record money. Enter an amount, choose a category, and tap **Paid with Cash** or **Paid with GCash** for expenses (**Received in** for income). Each named wallet action saves with that explicit choice; the previous payment method is never selected for the next entry. Manage which actions appear in **Wallets → Direct entry buttons**. Select all, clear, select individual active wallets, or move them earlier/later; zero to twenty selections are valid. Entry adapts to the available space in that order: three short names share one equal row, four use a balanced 2 × 2 grid, and larger or constrained selections use a continuous rail with complete wrapped names and separate **All wallets** controls. An empty selection uses **Choose wallet to save**. The picker also opens the same button manager. Notes are optional. The local date is visible and editable. Close or Android Back keeps the unfinished draft.
 
@@ -71,7 +71,7 @@ Settings → Daily reminder starts off with no selected time. Confirm your time 
 
 ## Verification
 
-Current 0.2.7 verification: **239 Flutter tests and 39 native Android tests passed; Flutter analysis is clean**. Eight additional synthetic Flutter render cases cover bill list/editor/payment and balance comparison in light and dark themes. The ARM64 APK has code 2009, retained package/signing identity, and verified 16 KB alignment. See [0.2.7 release checks](docs/RELEASE_027.md). No emulator or physical-device check was performed for 0.2.7.
+Current 0.2.16 verification: **367 Flutter tests passed; Flutter analysis is clean**. The ARM64 APK uses version code 2018, retains package `dev.giann.pocket_entry` and the existing signing identity, and passed APK signature verification. Synthetic tests cover transfer previews, insufficient funds, exact centavo validation, edits, concurrent conflicts, cancellation/recovery and custom wallets. No emulator or physical-device check was performed for 0.2.16.
 
 Flutter screenshots are real Flutter test-renderer output at phone dimensions, with simulated system insets. Native widget screenshots are Android RemoteViews rendered through Robolectric API 35 with native graphics. The motion clip is a timed Flutter transition fixture. These establish fixture behavior and layout, **not POCO installation, launcher, frame-rate or hardware haptic verification**.
 

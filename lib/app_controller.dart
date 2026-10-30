@@ -8,6 +8,7 @@ import 'data/native_bridge.dart';
 import 'data/storage.dart';
 import 'data/coordinated_store.dart';
 import 'domain/ledger.dart';
+import 'domain/transfer_preview.dart';
 
 part 'app_features.dart';
 
@@ -307,6 +308,18 @@ class AppController extends ChangeNotifier {
             );
           }
           prepared = l.copy(categories: [...l.categories, selected]);
+        }
+        if (current.kind == EntryKind.transfer) {
+          final preview = previewTransfer(
+            l,
+            source: current.from,
+            destination: current.to,
+            amount: current.amount,
+            editingId: current.editingId,
+          );
+          if (preview.error != null) {
+            throw LedgerException(preview.error!);
+          }
         }
         return prepared
             .put(next, editing: current.editingId != null)

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocket_entry/domain/ledger.dart';
+import 'package:pocket_entry/domain/transfer_preview.dart';
 
 Entry record(
   String id,
@@ -105,6 +106,113 @@ void main() {
       expect(l.calculate(Wallet.gcash).balance, 435000);
     },
   );
+  test('transfer preview uses exact cents and rejects overdraws', () {
+    final ledger = Ledger.empty().copy(
+      openings: {Wallet.cash: 1001, Wallet.gcash: 25},
+    );
+    final exact = previewTransfer(
+      ledger,
+      source: Wallet.cash,
+      destination: Wallet.gcash,
+      amount: '10.01',
+    );
+    expect(exact.canTransfer, true);
+    expect(exact.sourceCurrent, 1001);
+    expect(exact.destinationCurrent, 25);
+    expect(exact.sourceAfter, 0);
+    expect(exact.destinationAfter, 1026);
+    expect(exact.activeTotalCurrent, 1026);
+    expect(exact.activeTotalAfter, 1026);
+
+    final overdraw = previewTransfer(
+      ledger,
+      source: Wallet.cash,
+      destination: Wallet.gcash,
+      amount: '10.02',
+    );
+    expect(overdraw.canTransfer, false);
+    expect(overdraw.error, contains('Not enough'));
+    for (final amount in ['0', '-0.01', '1.001']) {
+      expect(
+        previewTransfer(
+          ledger,
+          source: Wallet.cash,
+          destination: Wallet.gcash,
+          amount: amount,
+        ).error,
+        isNotNull,
+        reason: amount,
+      );
+    }
+    expect(
+      previewTransfer(
+        ledger,
+        source: Wallet.cash,
+        destination: Wallet.cash,
+        amount: '1.00',
+      ).error,
+      contains('different wallets'),
+    );
+  });
+  test(
+    'editing a transfer removes its old posting from available and preview',
+    () {
+      final custom = Wallet(id: 'mari', label: 'MariBank', color: 'green');
+      var ledger = Ledger.empty().copy(
+        wallets: [...Wallet.values, custom],
+        openings: {Wallet.cash: 2000, Wallet.gcash: 500, custom: 0},
+      );
+      ledger = ledger.put(
+        record(
+          'old_transfer',
+          EntryKind.transfer,
+          1000,
+          Wallet.cash,
+          to: Wallet.gcash,
+        ),
+      );
+      final edit = previewTransfer(
+        ledger,
+        source: Wallet.cash,
+        destination: custom,
+        amount: '20.00',
+        editingId: 'old_transfer',
+      );
+      expect(edit.sourceCurrent, 1000);
+      expect(edit.sourceAvailable, 2000);
+      expect(edit.sourceAfter, 0);
+      expect(edit.destinationAfter, 2000);
+      expect(edit.activeTotalCurrent, 2500);
+      expect(edit.activeTotalAfter, 2500);
+
+      final reverse = previewTransfer(
+        ledger,
+        source: Wallet.gcash,
+        destination: Wallet.cash,
+        amount: '5.00',
+        editingId: 'old_transfer',
+      );
+      expect(reverse.sourceCurrent, 1500);
+      expect(reverse.sourceAvailable, 500);
+      expect(reverse.sourceAfter, 0);
+      expect(reverse.destinationAfter, 2500);
+      expect(reverse.activeTotalAfter, 2500);
+    },
+  );
+  test('transfer all is capped by the entry amount limit', () {
+    final ledger = Ledger.empty().copy(
+      openings: {Wallet.cash: maxCentavos + 25, Wallet.gcash: 0},
+    );
+    final preview = previewTransfer(
+      ledger,
+      source: Wallet.cash,
+      destination: Wallet.gcash,
+      amount: '',
+    );
+    expect(preview.canTransferAll, true);
+    expect(preview.transferAllCentavos, maxCentavos);
+    expect(preview.transferAllWasCapped, true);
+  });
   test('edit changes amount, date, wallet and monthly totals', () {
     var l = Ledger.empty().put(
       record('one', EntryKind.expense, 101, Wallet.cash),

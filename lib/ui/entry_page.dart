@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_controller.dart';
 import '../domain/ledger.dart';
+import '../domain/transfer_preview.dart';
 import 'design.dart';
 import 'screens.dart' show DirectEntryButtonsPage, WalletsPage;
 
@@ -202,6 +203,15 @@ class _EntryPageState extends State<EntryPage> {
       }
       final p = Palette.of(context);
       final isTransfer = draft.kind == EntryKind.transfer;
+      final transferPreview = isTransfer
+          ? previewTransfer(
+              app.ledger,
+              source: draft.from,
+              destination: draft.to,
+              amount: draft.amount,
+              editingId: draft.editingId,
+            )
+          : null;
       final categories = app.ledger.categoriesFor(draft.kind);
       final quickCategories = categories
           .take(draft.kind == EntryKind.income ? 5 : 4)
@@ -233,7 +243,8 @@ class _EntryPageState extends State<EntryPage> {
                       MediaQuery.textScalerOf(context).scale(1) > 1.25;
                   final compactKeypad =
                       small ||
-                      (!isTransfer && app.ledger.quickWallets.length == 4);
+                      isTransfer ||
+                      app.ledger.quickWallets.length == 4;
                   final landscape =
                       constraints.maxHeight < 480 &&
                       constraints.maxWidth >= 620;
@@ -342,6 +353,8 @@ class _EntryPageState extends State<EntryPage> {
                                         height: small
                                             ? (amountBounds.maxHeight - 58)
                                                   .clamp(24.0, 58.0)
+                                            : isTransfer
+                                            ? 54
                                             : 96,
                                         child: Row(
                                           mainAxisAlignment:
@@ -388,9 +401,9 @@ class _EntryPageState extends State<EntryPage> {
                                       Press(
                                         key: const ValueKey('entry-date'),
                                         onPressed: app.busy ? null : chooseDate,
-                                        padding: const EdgeInsets.symmetric(
+                                        padding: EdgeInsets.symmetric(
                                           horizontal: 14,
-                                          vertical: 10,
+                                          vertical: isTransfer ? 6 : 10,
                                         ),
                                         label:
                                             'Edit date, ${shortDate(draft.date)}',
@@ -422,8 +435,20 @@ class _EntryPageState extends State<EntryPage> {
                                       ),
                                     ],
                                   ),
+                                  if (transferPreview != null) ...[
+                                    const SizedBox(height: 6),
+                                    _TransferBalances(
+                                      preview: transferPreview,
+                                      disabled: submitting || app.busy,
+                                      onTransferAll: () => change(() {
+                                        draft.amount = moneyInput(
+                                          transferPreview.transferAllCentavos,
+                                        );
+                                      }),
+                                    ),
+                                  ],
                                   const SizedBox(height: 2),
-                                  if (!small)
+                                  if (!small && !isTransfer)
                                     Press(
                                       onPressed: app.busy ? null : note,
                                       padding: const EdgeInsets.symmetric(
@@ -724,7 +749,11 @@ class _EntryPageState extends State<EntryPage> {
                             ? PrimaryButton(
                                 'Record ${app.ledger.wallet(draft.from)?.label ?? "From"} → ${app.ledger.wallet(draft.to)?.label ?? "To"}',
                                 icon: CupertinoIcons.arrow_right_arrow_left,
-                                onPressed: submitting || app.busy
+                                onPressed:
+                                    submitting ||
+                                        app.busy ||
+                                        transferPreview?.error != null ||
+                                        transferPreview?.centavos == null
                                     ? null
                                     : () => save(draft.from),
                               )
@@ -1181,6 +1210,174 @@ class _DirectWalletActionsState extends State<_DirectWalletActions> {
           ],
         );
       },
+    );
+  }
+}
+
+class _TransferBalances extends StatelessWidget {
+  const _TransferBalances({
+    required this.preview,
+    required this.disabled,
+    required this.onTransferAll,
+  });
+
+  final TransferPreview preview;
+  final bool disabled;
+  final VoidCallback onTransferAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: p.surface,
+        borderRadius: BorderRadius.circular(p.cardRadius),
+        border: Border.all(color: p.surfaceEdge),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _walletProjection(
+                  context,
+                  label: '${preview.source.label} · From',
+                  current: preview.sourceCurrent,
+                  available: preview.sourceAvailable,
+                  after: preview.sourceAfter,
+                  showAvailable:
+                      preview.sourceCurrent != preview.sourceAvailable,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _walletProjection(
+                  context,
+                  label: '${preview.destination.label} · To',
+                  current: preview.destinationCurrent,
+                  after: preview.destinationAfter,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Active wallet total now: ${money(preview.activeTotalCurrent)}',
+                      style: textStyle(context, size: 12, color: p.secondary),
+                    ),
+                    Text(
+                      'After transfer: ${preview.activeTotalAfter == null ? 'Enter a valid amount' : money(preview.activeTotalAfter!)}',
+                      style: textStyle(context, size: 12, color: p.secondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Press(
+                label: 'Transfer all available funds',
+                color: p.line,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                onPressed: disabled || !preview.canTransferAll
+                    ? null
+                    : onTransferAll,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.arrow_down_to_line,
+                      size: 15,
+                      color: disabled || !preview.canTransferAll
+                          ? p.secondary
+                          : p.accent,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'Transfer all',
+                      style: textStyle(
+                        context,
+                        size: 12,
+                        weight: FontWeight.w600,
+                        color: disabled || !preview.canTransferAll
+                            ? p.secondary
+                            : p.accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (preview.error != null) ...[
+            const SizedBox(height: 6),
+            ErrorLine(preview.error),
+          ],
+          if (preview.transferAllWasCapped) ...[
+            const SizedBox(height: 6),
+            Text(
+              'One transfer is limited to ${money(maxCentavos)}. Split a larger balance across transfers.',
+              style: textStyle(context, size: 12, color: p.secondary),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _walletProjection(
+    BuildContext context, {
+    required String label,
+    required int current,
+    required int? after,
+    int? available,
+    bool showAvailable = false,
+  }) {
+    final p = Palette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: textStyle(context, size: 12, color: p.secondary)),
+        const SizedBox(height: 2),
+        Text(
+          'Now ${money(current)}',
+          softWrap: true,
+          style: textStyle(
+            context,
+            size: 14,
+            weight: FontWeight.w600,
+            tabular: true,
+          ),
+        ),
+        if (showAvailable && available != null)
+          Text(
+            'Available ${money(available)}',
+            softWrap: true,
+            style: textStyle(
+              context,
+              size: 11,
+              color: p.secondary,
+              tabular: true,
+            ),
+          ),
+        Text(
+          'After ${after == null ? '—' : money(after)}',
+          softWrap: true,
+          style: textStyle(context, size: 13, color: p.accent, tabular: true),
+        ),
+      ],
     );
   }
 }
