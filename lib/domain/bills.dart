@@ -2,6 +2,8 @@ part of 'ledger.dart';
 
 enum BillFrequency { once, weekly, monthly, yearly }
 
+const maxBillPayments = 20000;
+
 class Bill {
   const Bill({
     required this.id,
@@ -9,12 +11,14 @@ class Bill {
     required this.centavos,
     required this.startDate,
     this.frequency = BillFrequency.monthly,
+    this.paymentCount,
     this.enabled = true,
     this.remind = false,
   });
   final String id, name, startDate;
   final int centavos;
   final BillFrequency frequency;
+  final int? paymentCount;
   final bool enabled, remind;
 
   Bill copy({
@@ -22,6 +26,7 @@ class Bill {
     int? centavos,
     String? startDate,
     BillFrequency? frequency,
+    Object? paymentCount = _keepBillPaymentCount,
     bool? enabled,
     bool? remind,
   }) => Bill(
@@ -30,6 +35,9 @@ class Bill {
     centavos: centavos ?? this.centavos,
     startDate: startDate ?? this.startDate,
     frequency: frequency ?? this.frequency,
+    paymentCount: identical(paymentCount, _keepBillPaymentCount)
+        ? this.paymentCount
+        : paymentCount as int?,
     enabled: enabled ?? this.enabled,
     remind: remind ?? this.remind,
   );
@@ -39,6 +47,7 @@ class Bill {
     'centavos': centavos,
     'startDate': startDate,
     'frequency': frequency.name,
+    'paymentCount': paymentCount,
     'enabled': enabled,
     'remind': remind,
   };
@@ -54,15 +63,33 @@ class Bill {
     if (id.length > 32 || name.isEmpty || frequency == null) {
       throw const LedgerException('A bill has invalid details.');
     }
-    return Bill(
+    final rawPaymentCount = map['paymentCount'];
+    final paymentCount = rawPaymentCount == null
+        ? null
+        : intField(map, 'paymentCount', min: 1, max: maxBillPayments);
+    if (paymentCount != null &&
+        frequency != BillFrequency.weekly &&
+        frequency != BillFrequency.monthly) {
+      throw const LedgerException(
+        'Fixed installment plans support weekly or monthly bills.',
+      );
+    }
+    final bill = Bill(
       id: id,
       name: name,
       startDate: start,
       centavos: intField(map, 'centavos', min: 1),
       frequency: frequency,
+      paymentCount: paymentCount,
       enabled: boolField(map, 'enabled', fallback: true),
       remind: boolField(map, 'remind'),
     );
+    if (paymentCount != null && bill.lastDueDate == null) {
+      throw const LedgerException(
+        'The installment plan ends outside the supported date range.',
+      );
+    }
+    return bill;
   }
 
   String paymentId(String dueDate) =>
@@ -70,8 +97,10 @@ class Bill {
 
   // Anchor to the original day, so Jan 31 -> Feb 28 -> Mar 31 (not Mar 28).
   String? occurrence(int index) {
+    final count = paymentCount;
     if (index < 0 ||
-        index > 20000 ||
+        index > maxBillPayments ||
+        count != null && index >= count ||
         frequency == BillFrequency.once && index > 0) {
       return null;
     }
@@ -103,23 +132,18 @@ class Bill {
   bool containsDue(String value) {
     final date = localDay(value), anchor = localDay(startDate);
     if (value.compareTo(startDate) < 0) return false;
-    return switch (frequency) {
-      BillFrequency.once => value == startDate,
+    final index = switch (frequency) {
+      BillFrequency.once => 0,
       BillFrequency.weekly =>
         DateTime.utc(date.year, date.month, date.day)
-                    .difference(
-                      DateTime.utc(anchor.year, anchor.month, anchor.day),
-                    )
-                    .inDays %
-                7 ==
-            0,
+                .difference(DateTime.utc(anchor.year, anchor.month, anchor.day))
+                .inDays ~/
+            7,
       BillFrequency.monthly =>
-        occurrence(
-              (date.year - anchor.year) * 12 + date.month - anchor.month,
-            ) ==
-            value,
-      BillFrequency.yearly => occurrence(date.year - anchor.year) == value,
+        (date.year - anchor.year) * 12 + date.month - anchor.month,
+      BillFrequency.yearly => date.year - anchor.year,
     };
+    return occurrence(index) == value;
   }
 
   String? nextDue(Ledger ledger) {
@@ -130,6 +154,17 @@ class Bill {
       if (date == null || !paid.contains(date)) return date;
     }
     return null;
+  }
+
+  int paidInstallments(Ledger ledger) =>
+      ledger.billPaidDates(id).where(containsDue).length;
+
+  int remainingCentavos(Ledger ledger) =>
+      ((paymentCount ?? 0) - paidInstallments(ledger)) * centavos;
+
+  String? get lastDueDate {
+    final count = paymentCount;
+    return count == null ? null : occurrence(count - 1);
   }
 }
 

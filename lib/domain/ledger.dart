@@ -7,6 +7,7 @@ part 'bills.dart';
 
 const schemaVersion = 5;
 const _keepAllowance = Object();
+const _keepBillPaymentCount = Object();
 const maxCentavos = 99999999999;
 const maxBackupBytes = 5 * 1024 * 1024;
 

@@ -26,8 +26,18 @@ class BillReminderTest {
     private val prefs get() = context.getSharedPreferences(BillReminder.PREFS, Context.MODE_PRIVATE)
     private val alarms get() = Shadows.shadowOf(context.getSystemService(AlarmManager::class.java))
     private val manager get() = context.getSystemService(NotificationManager::class.java)
-    private fun item(date: String = "2026-10-19", frequency: String = "once", paid: List<String> = emptyList()): Map<String, Any> =
-        mapOf("id" to "synthetic", "startDate" to date, "frequency" to frequency, "paidDates" to paid)
+    private fun item(
+        date: String = "2026-10-19",
+        frequency: String = "once",
+        paid: List<String> = emptyList(),
+        paymentCount: Int? = null,
+    ): Map<String, Any> = buildMap {
+        put("id", "synthetic")
+        put("startDate", date)
+        put("frequency", frequency)
+        put("paidDates", paid)
+        if (paymentCount != null) put("paymentCount", paymentCount)
+    }
     @Before fun reset() {
         prefs.edit().clear().commit()
         Shadows.shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
@@ -39,7 +49,41 @@ class BillReminderTest {
         assertFalse(BillReminder.valid(listOf(item("2201-01-01"))))
         assertFalse(BillReminder.valid(listOf(item(), item())))
         assertFalse(BillReminder.valid(listOf(item(frequency = "unknown"))))
+        assertFalse(BillReminder.valid(listOf(item(frequency = "weekly", paymentCount = 0))))
+        assertFalse(BillReminder.valid(listOf(item(frequency = "once", paymentCount = 2))))
+        assertFalse(BillReminder.valid(listOf(item(
+            date = "2026-10-31",
+            frequency = "monthly",
+            paid = listOf("2027-01-31"),
+            paymentCount = 3,
+        ))))
         assertFalse(BillReminder.valid((0..100).map { item() + mapOf("id" to "bill$it") }))
+    }
+
+    @Test fun finiteInstallmentRemindersIncludeTheLastDateAndThenStop() {
+        val schedule = item(frequency = "weekly", paymentCount = 2)
+        BillReminder.configure(context, listOf(schedule), morning, zone)
+        val first = prefs.getLong("due", 0)
+        assertEquals(Instant.parse("2026-10-19T01:00:00Z").toEpochMilli(), first)
+
+        BillReminder.deliver(context, first, Instant.ofEpochMilli(first + 60000), zone)
+        val final = prefs.getLong("due", 0)
+        assertEquals(Instant.parse("2026-10-26T01:00:00Z").toEpochMilli(), final)
+        BillReminder.deliver(context, final, Instant.ofEpochMilli(final + 60000), zone)
+
+        assertFalse(prefs.contains("due"))
+        assertTrue(alarms.scheduledAlarms.isEmpty())
+    }
+
+    @Test fun addingNullCountToALegacyInfiniteRuleKeepsItsReminderIdentity() {
+        BillReminder.configure(context, listOf(item(frequency = "weekly")), morning, zone)
+        val before = JSONObject(prefs.getString("definitions", "{}")).getString("synthetic")
+        val withNullCount = item(frequency = "weekly") +
+            mapOf("paymentCount" to org.json.JSONObject.NULL)
+        BillReminder.configure(context, listOf(withNullCount), morning, zone)
+        val after = JSONObject(prefs.getString("definitions", "{}")).getString("synthetic")
+        assertEquals("2026-10-19|weekly", before)
+        assertEquals(before, after)
     }
 
     @Test fun defaultAndDeniedPermissionScheduleNothing() {

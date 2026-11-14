@@ -34,9 +34,15 @@ object BillReminder {
     private fun manager(context: Context) = context.getSystemService(NotificationManager::class.java)
     private fun alarms(context: Context) = context.getSystemService(AlarmManager::class.java)
 
-    private data class Rule(val id: String, val anchor: LocalDate, val frequency: String, val paid: Set<LocalDate>) {
+    private data class Rule(
+        val id: String,
+        val anchor: LocalDate,
+        val frequency: String,
+        val paymentCount: Int?,
+        val paid: Set<LocalDate>,
+    ) {
         fun occurrence(index: Int): LocalDate? {
-            if (index < 0 || index > 20000 || frequency == "once" && index > 0) return null
+            if (index < 0 || index > 20000 || paymentCount != null && index >= paymentCount || frequency == "once" && index > 0) return null
             val date = when (frequency) {
                 "once" -> anchor
                 "weekly" -> anchor.plusWeeks(index.toLong())
@@ -56,7 +62,7 @@ object BillReminder {
                 else -> error("Invalid bill recurrence")
             }
             if (occurrence(index)?.isAfter(day) == true) index--
-            return index
+            return paymentCount?.let { minOf(index, it - 1) } ?: index
         }
     }
     private data class Candidate(val billId: String, val date: LocalDate) {
@@ -67,10 +73,20 @@ object BillReminder {
         val id = row.getString("id"); require(id.matches(Regex("[a-zA-Z0-9_-]{1,32}")))
         val anchor = LocalDate.parse(row.getString("startDate")); require(anchor.year in 1900..2200)
         val frequency = row.getString("frequency"); require(frequency in listOf("once", "weekly", "monthly", "yearly"))
+        val rawCount = row.opt("paymentCount")
+        val paymentCount = when {
+            rawCount == null || rawCount == JSONObject.NULL -> null
+            rawCount is Number -> rawCount.toLong().takeIf {
+                it in 1L..20000L && rawCount.toDouble() == it.toDouble()
+            }?.toInt() ?: throw IllegalArgumentException("Invalid installment count")
+            else -> throw IllegalArgumentException("Invalid installment count")
+        }
+        require(paymentCount == null || frequency in listOf("weekly", "monthly"))
         val raw = row.getJSONArray("paidDates"); require(raw.length() <= 20000)
         val dates = (0 until raw.length()).map { LocalDate.parse(raw.getString(it)) }
         require(dates.distinct().size == dates.size && dates.all { it.year in 1900..2200 })
-        val rule = Rule(id, anchor, frequency, dates.toSet())
+        val rule = Rule(id, anchor, frequency, paymentCount, dates.toSet())
+        require(paymentCount == null || rule.occurrence(paymentCount - 1) != null)
         require(dates.all { rule.occurrence(rule.indexOnOrBefore(it)) == it })
         return rule
     }
@@ -137,7 +153,9 @@ object BillReminder {
         val latest = JSONObject(prefs(context).getString("lastDates", "{}"))
         for (item in items) {
             val id = item["id"] as String
-            val definition = "${item["startDate"]}|${item["frequency"]}"
+            val paymentCount = item["paymentCount"]
+            val definition = "${item["startDate"]}|${item["frequency"]}" +
+                if (paymentCount == null || paymentCount == JSONObject.NULL) "" else "|count=$paymentCount"
             if (definitions.has(id) && definitions.getString(id) != definition) latest.remove(id)
             definitions.put(id, definition)
         }

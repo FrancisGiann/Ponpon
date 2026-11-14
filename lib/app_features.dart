@@ -69,12 +69,20 @@ extension BillsAndBalance on AppController {
         'Keep up to 100 bills, including paused bills.',
       );
     }
+    final history = l.entries.where((e) => e.billId == value.id);
     if (previous != null &&
         (previous.startDate != value.startDate ||
             previous.frequency != value.frequency) &&
-        l.entries.any((e) => e.billId == value.id)) {
+        history.isNotEmpty) {
       throw const LedgerException(
-        'This bill has payment history. Pause it and create a new bill to change its recurrence.',
+        'This bill has payment history. Pause it and create a new bill to change its first due date or frequency.',
+      );
+    }
+    if (previous != null &&
+        previous.paymentCount != value.paymentCount &&
+        history.any((entry) => !value.containsDue(entry.billDueDate!))) {
+      throw const LedgerException(
+        'The new installment count would remove a payment from this bill’s history.',
       );
     }
     return l.copy(

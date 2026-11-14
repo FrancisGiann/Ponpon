@@ -86,6 +86,102 @@ void main() {
     expect(bill.copy(startDate: '2200-12-31').occurrence(1), isNull);
   });
 
+  test('Fixed installment plans preview and cap weekly or monthly dates', () {
+    final monthly = bill.copy(
+      startDate: '2026-10-31',
+      frequency: BillFrequency.monthly,
+      paymentCount: 3,
+    );
+    expect(monthly.lastDueDate, '2026-12-31');
+    expect(monthly.occurrence(2), '2026-12-31');
+    expect(monthly.occurrence(3), isNull);
+    expect(monthly.containsDue('2026-12-31'), isTrue);
+    expect(monthly.containsDue('2027-01-31'), isFalse);
+    expect(
+      bill
+          .copy(
+            startDate: '2026-10-19',
+            frequency: BillFrequency.weekly,
+            paymentCount: 2,
+          )
+          .lastDueDate,
+      '2026-10-26',
+    );
+
+    final legacy = bill.toJson()..remove('paymentCount');
+    expect(Bill.fromJson(legacy).paymentCount, isNull);
+    for (final invalid in [0, maxBillPayments + 1]) {
+      expect(
+        () => Bill.fromJson(monthly.copy(paymentCount: invalid).toJson()),
+        throwsA(isA<LedgerException>()),
+      );
+    }
+    expect(
+      () =>
+          Bill.fromJson(monthly.copy(frequency: BillFrequency.yearly).toJson()),
+      throwsA(isA<LedgerException>()),
+    );
+    expect(
+      () => Bill.fromJson(
+        bill
+            .copy(
+              startDate: '2200-12-31',
+              frequency: BillFrequency.monthly,
+              paymentCount: 2,
+            )
+            .toJson(),
+      ),
+      throwsA(isA<LedgerException>()),
+    );
+  });
+
+  test(
+    'Fixed plan progress keeps the next unpaid installment and remaining total',
+    () async {
+      final plan = bill.copy(paymentCount: 3);
+      final ledger = fixture().copy(bills: [plan]);
+      final app = controller(ledger);
+      final category = ledger.category('bills')!;
+      expect(plan.paidInstallments(app.ledger), 0);
+      expect(plan.remainingCentavos(app.ledger), 15000);
+      expect(plan.nextDue(app.ledger), '2026-10-31');
+
+      for (var index = 0; index < 3; index++) {
+        final due = plan.occurrence(index)!;
+        expect(
+          await app.recordBillPayment(
+            plan,
+            due,
+            Wallet.cash,
+            category,
+            confirmed: true,
+          ),
+          isTrue,
+        );
+        final current = app.ledger.bill(plan.id)!;
+        expect(current.paidInstallments(app.ledger), index + 1);
+        expect(current.remainingCentavos(app.ledger), (2 - index) * 5000);
+        expect(current.nextDue(app.ledger), plan.occurrence(index + 1));
+      }
+      expect(app.ledger.bill(plan.id)!.nextDue(app.ledger), isNull);
+      expect(app.ledger.billPaidDates(plan.id), {
+        '2026-10-31',
+        '2026-11-30',
+        '2026-12-31',
+      });
+      expect(
+        await app.recordBillPayment(
+          plan,
+          '2027-01-31',
+          Wallet.cash,
+          category,
+          confirmed: true,
+        ),
+        isFalse,
+      );
+    },
+  );
+
   test('Adding and pausing overdue bills never inserts expenses', () async {
     final app = controller(fixture());
     final opening = app.ledger.activeWalletBalance;
@@ -327,6 +423,42 @@ void main() {
     expect(app.ledger.active.single.toJson(), before);
   });
 
+  test(
+    'Recurring bills can gain or extend a term without dropping history',
+    () async {
+      final ledger = fixture().copy(bills: [bill]);
+      final app = controller(ledger);
+      final category = ledger.category('bills')!;
+      await app.recordBillPayment(
+        bill,
+        bill.startDate,
+        Wallet.cash,
+        category,
+        confirmed: true,
+      );
+
+      final twoPayments = bill.copy(paymentCount: 2);
+      expect(await app.setBill(twoPayments), isTrue);
+      expect(app.ledger.bill(bill.id)!.nextDue(app.ledger), '2026-11-30');
+      expect(
+        await app.recordBillPayment(
+          twoPayments,
+          '2026-11-30',
+          Wallet.cash,
+          category,
+          confirmed: true,
+        ),
+        isTrue,
+      );
+
+      expect(await app.setBill(twoPayments.copy(paymentCount: 1)), isFalse);
+      expect(app.ledger.bill(bill.id)!.paymentCount, 2);
+      expect(await app.setBill(twoPayments.copy(paymentCount: 3)), isTrue);
+      expect(app.ledger.bill(bill.id)!.paidInstallments(app.ledger), 2);
+      expect(app.ledger.bill(bill.id)!.nextDue(app.ledger), '2026-12-31');
+    },
+  );
+
   test('Restart and backup retain payment/adjustment origins and pause imported reminders', () async {
     final ledger = fixture().copy(bills: [bill]);
     final app = controller(ledger);
@@ -435,9 +567,10 @@ void main() {
     addTearDown(
       () => messenger.setMockMethodCallHandler(NativeBridge.channel, null),
     );
+    final finiteBill = bill.copy(paymentCount: 6);
     final valid = fixture().copy(
       bills: [
-        bill,
+        finiteBill,
         const Bill(
           id: 'not_opted_in',
           name: 'No reminder',
@@ -451,9 +584,10 @@ void main() {
     final payload = calls.single.arguments as Map<dynamic, dynamic>;
     expect(payload['billReminders'], [
       {
-        'id': bill.id,
-        'startDate': bill.startDate,
+        'id': finiteBill.id,
+        'startDate': finiteBill.startDate,
         'frequency': 'monthly',
+        'paymentCount': 6,
         'paidDates': <String>[],
       },
     ]);

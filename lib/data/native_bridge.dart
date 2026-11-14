@@ -66,6 +66,7 @@ class NativeBridge {
             'id': bill.id,
             'startDate': bill.startDate,
             'frequency': bill.frequency.name,
+            if (bill.paymentCount != null) 'paymentCount': bill.paymentCount,
             'paidDates': ledger.billPaidDates(bill.id).toList()..sort(),
           },
     ];

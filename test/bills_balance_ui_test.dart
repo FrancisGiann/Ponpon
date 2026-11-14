@@ -127,10 +127,128 @@ void main() {
       await tester.pumpAndSettle();
       expect(app.ledger.active.single.wallet, Wallet.gcash);
       expect(app.ledger.calculate(Wallet.gcash).balance, 15000);
+      expect(find.text('Payment recorded'), findsOneWidget);
+      final paidBurst = tester.widget<CustomPaint>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('bill-celebration-paid')),
+              matching: find.byType(CustomPaint),
+            )
+            .first,
+      );
+      expect(paidBurst.painter, isNotNull);
       await tester.tap(find.text('Undo'));
       await tester.pumpAndSettle();
       expect(app.ledger.calculate(Wallet.gcash).balance, 20000);
       expect(data.bill.nextDue(app.ledger), data.bill.startDate);
+      expect(find.text('Payment recorded'), findsNothing);
+      await tester.scrollUntilVisible(find.text('Review payment'), 300);
+      expect(find.text('Review payment'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Installment schedule shows dates and payment status', (
+    tester,
+  ) async {
+    configure(tester, const Size(390, 844));
+    final plan = data.bill.copy(paymentCount: 2);
+    final app = data.controller(data.fixture().copy(bills: [plan]));
+    await tester.pumpWidget(
+      PocketApp(
+        controller: app,
+        testHome: BillsPage(app: app),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('0/2 installments paid · ₱100.00 remaining'));
+    await tester.pumpAndSettle();
+    expect(find.text('Payment schedule'), findsOneWidget);
+    expect(find.text('Payment 1'), findsOneWidget);
+    expect(find.text('Payment 2'), findsOneWidget);
+    expect(find.text('Next due'), findsOneWidget);
+    expect(find.text('Upcoming'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'Final installment celebrates completion and Undo returns to payment',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      final plan = data.bill.copy(paymentCount: 2);
+      final ledger = data.fixture().copy(bills: [plan]);
+      final app = data.controller(ledger);
+      final category = ledger.category('bills')!;
+      expect(
+        await app.recordBillPayment(
+          plan,
+          plan.startDate,
+          Wallet.cash,
+          category,
+          confirmed: true,
+        ),
+        isTrue,
+      );
+      await tester.pumpWidget(
+        launch(
+          app,
+          BillPaymentPage(app: app, bill: plan, dueDate: plan.occurrence(1)!),
+        ),
+      );
+      await tester.tap(find.text('Open feature'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Cash'), -300);
+      await tester.tap(find.text('Cash'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Review payment'), 300);
+      await tester.tap(find.text('Review payment'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(CupertinoAlertDialog),
+          matching: find.text('Record payment'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('All installments paid'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('bill-celebration-completed')),
+        findsOneWidget,
+      );
+      expect(app.ledger.bill(plan.id)!.nextDue(app.ledger), isNull);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(find.text('All installments paid'), findsNothing);
+      expect(app.ledger.bill(plan.id)!.nextDue(app.ledger), plan.occurrence(1));
+      await tester.scrollUntilVisible(find.text('Review payment'), 300);
+      expect(find.text('Review payment'), findsOneWidget);
+      app.clearFeedback();
+      expect(
+        await app.preferences(app.ledger.preferences.copy(reduceMotion: true)),
+        isTrue,
+      );
+      await tester.scrollUntilVisible(find.text('Review payment'), 300);
+      await tester.tap(find.text('Review payment'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(CupertinoAlertDialog),
+          matching: find.text('Record payment'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('All installments paid'), findsOneWidget);
+      final reducedBurst = tester.widget<CustomPaint>(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey('bill-celebration-completed')),
+              matching: find.byType(CustomPaint),
+            )
+            .first,
+      );
+      expect(reducedBurst.painter, isNull);
       expect(tester.takeException(), isNull);
     },
   );
@@ -196,8 +314,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(calls, isEmpty);
-      await tester.ensureVisible(find.bySemanticsLabel('Bill reminder'));
-      await tester.tap(find.bySemanticsLabel('Bill reminder'));
+      const reminderSwitch = ValueKey('bill-reminder-switch');
+      await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(reminderSwitch));
       await tester.pumpAndSettle();
       expect(calls, ['requestBillReminderPermission']);
       expect(app.ledger.bills, isEmpty);
