@@ -16,26 +16,52 @@ class LoansPage extends StatelessWidget {
         .toList();
     final completed = active.where((loan) => loan.completed(ledger)).toList();
     final p = Palette.of(context);
+    if (p.adventure) {
+      return _adventureLoans(context, ledger, outstanding, completed, p);
+    }
     return ListView(
       key: const ValueKey('loans-scroll'),
       padding: EdgeInsets.zero,
       children: [
-        PageHeading(
-          'Loans',
-          subtitle: 'Money owed to you',
-          trailing: Press(
-            label: 'Add loan',
-            onPressed: app.busy
-                ? null
-                : () => pushPocket<void>(
-                    context,
-                    LoanEditorPage(app: app),
-                    modal: true,
-                  ),
-            padding: const EdgeInsets.all(10),
-            child: Icon(CupertinoIcons.plus, color: p.accent, size: 22),
+        if (p.adventure)
+          AdventureSectionHeader(
+            title: 'Loans',
+            eyebrow: 'REPAYMENT TRACKER',
+            subtitle: 'Money owed to you · paid and remaining',
+            asset: 'assets/adventure/pixel_loans.png',
+            trailing: Press(
+              label: 'Add loan',
+              onPressed: app.busy
+                  ? null
+                  : () => pushPocket<void>(
+                      context,
+                      LoanEditorPage(app: app),
+                      modal: true,
+                    ),
+              color: p.ink,
+              raised: true,
+              radius: 2,
+              padding: const EdgeInsets.all(8),
+              child: Icon(CupertinoIcons.plus, color: p.pixelGold, size: 21),
+            ),
+          )
+        else
+          PageHeading(
+            'Loans',
+            subtitle: 'Money owed to you',
+            trailing: Press(
+              label: 'Add loan',
+              onPressed: app.busy
+                  ? null
+                  : () => pushPocket<void>(
+                      context,
+                      LoanEditorPage(app: app),
+                      modal: true,
+                    ),
+              padding: const EdgeInsets.all(10),
+              child: Icon(CupertinoIcons.plus, color: p.accent, size: 22),
+            ),
           ),
-        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Surface(
@@ -46,6 +72,20 @@ class LoansPage extends StatelessWidget {
                   'Projected balance',
                   style: textStyle(context, size: 14, color: p.secondary),
                 ),
+                if (p.adventure) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Image.asset(
+                      'assets/adventure/pixel_loans.png',
+                      width: 62,
+                      height: 62,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.none,
+                      semanticLabel: 'Repayment trail illustration',
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   money(ledger.loanProjectionBalance),
@@ -107,19 +147,373 @@ class LoansPage extends StatelessWidget {
       ],
     );
   }
+
+  Widget _adventureLoans(
+    BuildContext context,
+    Ledger ledger,
+    List<Loan> outstanding,
+    List<Loan> completed,
+    Palette p,
+  ) => ListView(
+    key: const ValueKey('adventure-loan-roster'),
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
+    children: [
+      AdventureSectionHeader(
+        title: 'Loans',
+        eyebrow: 'BORROWER ROSTER',
+        subtitle: 'Track repayments and what remains owed',
+        asset: 'assets/adventure/pixel_loans.png',
+        trailing: Press(
+          label: 'Add loan',
+          onPressed: app.busy
+              ? null
+              : () => pushPocket<void>(
+                  context,
+                  LoanEditorPage(app: app),
+                  modal: true,
+                ),
+          color: p.ink,
+          raised: true,
+          radius: 2,
+          padding: const EdgeInsets.all(8),
+          child: Icon(CupertinoIcons.plus, color: p.pixelGold, size: 21),
+        ),
+      ),
+      PixelFrame(
+        key: const ValueKey('loan-projection-hud'),
+        fillColor: p.ink,
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Projected balance',
+                    style: textStyle(
+                      context,
+                      size: 10,
+                      weight: FontWeight.w900,
+                      color: p.pixelGold,
+                    ),
+                  ),
+                ),
+                Image.asset(
+                  'assets/adventure/pixel_loans.png',
+                  width: 42,
+                  height: 42,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.none,
+                  excludeFromSemantics: true,
+                ),
+              ],
+            ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                money(ledger.loanProjectionBalance),
+                key: const ValueKey('loan-projection-balance'),
+                style: textStyle(
+                  context,
+                  size: 32,
+                  weight: FontWeight.w800,
+                  color: p.surface,
+                  tabular: true,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(height: 2, color: p.pixelGold.withValues(alpha: .7)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 14,
+              runSpacing: 5,
+              children: [
+                _ProjectionFact(
+                  label: 'WALLETS',
+                  value: money(ledger.activeWalletBalance),
+                ),
+                _ProjectionFact(
+                  label: 'OWED TO YOU',
+                  value: money(ledger.outstandingLoanPrincipal),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      if (outstanding.isEmpty && completed.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: PixelFrame(
+            fillColor: p.surface,
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Image.asset(
+                  'assets/adventure/pixel_loans.png',
+                  width: 72,
+                  height: 72,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.none,
+                  excludeFromSemantics: true,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'No borrowers yet',
+                  style: textStyle(context, size: 17, weight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Add a person and follow repayments here.',
+                  textAlign: TextAlign.center,
+                  style: textStyle(context, size: 13, color: p.secondary),
+                ),
+                const SizedBox(height: 12),
+                PrimaryButton(
+                  'Add first loan',
+                  icon: CupertinoIcons.add,
+                  onPressed: app.busy
+                      ? null
+                      : () => pushPocket<void>(
+                          context,
+                          LoanEditorPage(app: app),
+                          modal: true,
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      if (outstanding.isNotEmpty) ...[
+        _LoanSectionTitle('Active · ${outstanding.length}'),
+        for (final loan in outstanding)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _PixelBorrowerCard(
+              loan: loan,
+              ledger: ledger,
+              onTap: () => pushPocket<void>(
+                context,
+                LoanDetailPage(app: app, id: loan.id),
+              ),
+            ),
+          ),
+      ],
+      if (completed.isNotEmpty) ...[
+        _LoanSectionTitle('Completed · ${completed.length}'),
+        for (final loan in completed)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _PixelBorrowerCard(
+              loan: loan,
+              ledger: ledger,
+              onTap: () => pushPocket<void>(
+                context,
+                LoanDetailPage(app: app, id: loan.id),
+              ),
+            ),
+          ),
+      ],
+    ],
+  );
+}
+
+class _ProjectionFact extends StatelessWidget {
+  const _ProjectionFact({required this.label, required this.value});
+  final String label, value;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: textStyle(
+            context,
+            size: 9,
+            weight: FontWeight.w800,
+            color: p.pixelGold,
+          ),
+        ),
+        Text(
+          value,
+          style: textStyle(
+            context,
+            size: 13,
+            weight: FontWeight.w700,
+            color: p.surface,
+            tabular: true,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PixelBorrowerCard extends StatelessWidget {
+  const _PixelBorrowerCard({
+    required this.loan,
+    required this.ledger,
+    required this.onTap,
+  });
+  final Loan loan;
+  final Ledger ledger;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final paid = loan.paidCentavos(ledger);
+    final remaining = loan.remainingCentavos(ledger);
+    final done = loan.completed(ledger);
+    return PixelFrame(
+      fillColor: done ? p.greenTint : p.surface,
+      padding: const EdgeInsets.all(3),
+      child: Press(
+        onPressed: onTap,
+        label:
+            '${loan.borrower}, ${done ? 'completed' : '${money(remaining)} remaining'}',
+        color: done ? p.greenTint : p.surface,
+        padding: const EdgeInsets.all(11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  color: p.ink,
+                  child: Icon(
+                    done
+                        ? CupertinoIcons.check_mark
+                        : CupertinoIcons.person_fill,
+                    size: 18,
+                    color: p.pixelGold,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        loan.borrower,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textStyle(
+                          context,
+                          size: 15,
+                          weight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        done ? 'REPAYMENT COMPLETE' : 'REPAYMENT IN PROGRESS',
+                        style: textStyle(
+                          context,
+                          size: 9,
+                          weight: FontWeight.w800,
+                          color: p.secondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  done ? 'PAID' : money(remaining),
+                  style: textStyle(
+                    context,
+                    size: 14,
+                    weight: FontWeight.w800,
+                    color: done ? p.green : p.ink,
+                    tabular: true,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _LoanProgress(
+              value: loan.principalCentavos == 0
+                  ? 0
+                  : paid / loan.principalCentavos,
+              fillKey: 'loan-progress-list-fill',
+            ),
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${money(paid)} paid of ${money(loan.principalCentavos)}',
+                    style: textStyle(context, size: 11, color: p.secondary),
+                  ),
+                ),
+                if (loan.dueDate != null)
+                  Text(
+                    'DUE ${shortDate(loan.dueDate!)}',
+                    style: textStyle(
+                      context,
+                      size: 9,
+                      weight: FontWeight.w700,
+                      color: p.secondary,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _LoanSectionTitle extends StatelessWidget {
   const _LoanSectionTitle(this.title);
   final String title;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
-    child: Text(
-      title,
-      style: textStyle(context, size: 17, weight: FontWeight.w600),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    if (p.adventure) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+        child: Row(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: p.ink,
+                border: Border.all(color: p.pixelGold, width: 2),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              child: Text(
+                title.toUpperCase(),
+                style: textStyle(
+                  context,
+                  size: 11,
+                  weight: FontWeight.w800,
+                  color: p.surface,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(child: Rule()),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 10),
+      child: Text(
+        title,
+        style: textStyle(context, size: 17, weight: FontWeight.w600),
+      ),
+    );
+  }
 }
 
 class _LoanRow extends StatelessWidget {
@@ -138,6 +532,9 @@ class _LoanRow extends StatelessWidget {
     final p = Palette.of(context);
     return Surface(
       padding: EdgeInsets.zero,
+      color: p.adventure && loan.completed(ledger) ? p.greenTint : null,
+      edgeColor: p.adventure && loan.completed(ledger) ? p.green : null,
+      elevated: p.adventure,
       child: Press(
         onPressed: onTap,
         label: '${loan.borrower}, ${money(remaining)} remaining',
@@ -175,7 +572,7 @@ class _LoanRow extends StatelessWidget {
               style: textStyle(context, size: 13, color: p.secondary),
             ),
             const SizedBox(height: 12),
-            _LoanProgress(value: progress),
+            _LoanProgress(value: progress, fillKey: 'loan-progress-list-fill'),
           ],
         ),
       ),
@@ -184,14 +581,18 @@ class _LoanRow extends StatelessWidget {
 }
 
 class _LoanProgress extends StatelessWidget {
-  const _LoanProgress({required this.value});
+  const _LoanProgress({required this.value, required this.fillKey});
   final double value;
+  final String fillKey;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final progress = value.isFinite ? value.clamp(0.0, 1.0).toDouble() : 0.0;
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
+        key: ValueKey(fillKey.replaceFirst('fill', 'track')),
+        width: double.infinity,
         height: 7,
         child: Stack(
           fit: StackFit.expand,
@@ -200,8 +601,9 @@ class _LoanProgress extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
-                widthFactor: value.clamp(0.0, 1.0).toDouble(),
-                child: ColoredBox(color: p.green),
+                widthFactor: progress,
+                heightFactor: 1,
+                child: ColoredBox(key: ValueKey(fillKey), color: p.green),
               ),
             ),
           ],
@@ -227,9 +629,9 @@ class _LoanEditorPageState extends State<LoanEditorPage> {
     text: widget.loan == null ? '' : moneyInput(widget.loan!.principalCentavos),
   );
   late final alreadyRepaid = TextEditingController(
-    text: widget.loan == null
-        ? '0.00'
-        : widget.loan!.funded
+    text: widget.loan == null || widget.loan!.funded
+        ? ''
+        : widget.loan!.alreadyRepaidCentavos == 0
         ? ''
         : moneyInput(widget.loan!.alreadyRepaidCentavos),
   );
@@ -299,7 +701,9 @@ class _LoanEditorPageState extends State<LoanEditorPage> {
       final name = borrower.text.trim();
       final amount = parseMoney(principal.text);
       final initialPaid = existing
-          ? parseMoney(alreadyRepaid.text, allowZero: true)
+          ? alreadyRepaid.text.trim().isEmpty
+                ? 0
+                : parseMoney(alreadyRepaid.text, allowZero: true)
           : 0;
       final loan = widget.loan;
       bool success;
@@ -428,7 +832,7 @@ class _LoanEditorPageState extends State<LoanEditorPage> {
               const SizedBox(height: 10),
               PocketTextField(
                 controller: alreadyRepaid,
-                placeholder: 'Already repaid',
+                placeholder: '0.00',
                 money: true,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -775,7 +1179,10 @@ class _LoanDetailPageState extends State<LoanDetailPage> {
                     style: textStyle(context, size: 14, color: p.secondary),
                   ),
                   const SizedBox(height: 14),
-                  _LoanProgress(value: paid / loan.principalCentavos),
+                  _LoanProgress(
+                    value: paid / loan.principalCentavos,
+                    fillKey: 'loan-progress-detail-fill',
+                  ),
                 ],
               ),
             ),

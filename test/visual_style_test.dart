@@ -558,7 +558,7 @@ void main() {
         final target = find.byKey(ValueKey('style-${style.name}'));
         await tester.scrollUntilVisible(
           target,
-          style == VisualStyle.graphite ? 400 : -400,
+          style == VisualStyle.adventure ? 400 : -400,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.ensureVisible(target);

@@ -276,6 +276,7 @@ class SmallWidgetTest {
             "moss" to android.graphics.Color.parseColor("#EEF2E8"),
             "clay" to android.graphics.Color.parseColor("#F7EEE8"),
             "graphite" to android.graphics.Color.parseColor("#111315"),
+            "adventure" to android.graphics.Color.parseColor("#F4ECD8"),
         )
         for ((styleName, backgroundColor) in expected) {
             prefs.edit().clear().commit()
@@ -325,6 +326,7 @@ class SmallWidgetTest {
             "moss" to "light", "moss" to "dark",
             "clay" to "light", "clay" to "dark",
             "graphite" to "light", "graphite" to "dark",
+            "adventure" to "light", "adventure" to "dark",
         )
         try {
             for (scale in listOf(1f, 1.5f)) {

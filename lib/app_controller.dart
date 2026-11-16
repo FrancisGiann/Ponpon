@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'data/native_bridge.dart';
 import 'data/storage.dart';
 import 'data/coordinated_store.dart';
+import 'domain/adventure.dart';
 import 'domain/ledger.dart';
 import 'domain/transfer_preview.dart';
 
@@ -28,12 +29,48 @@ class AppController extends ChangeNotifier {
   Future<void> _draftQueue = Future.value();
   String? _pendingDraft;
   bool _writingDraft = false;
-  String? feedback;
+  String? _feedback;
+  int _feedbackSequence = 0;
+  String? get feedback => _feedback;
+  int get feedbackId => _feedbackSequence;
+  set feedback(String? value) {
+    _feedback = value;
+    _feedbackSequence++;
+  }
+
   bool feedbackUndo = false;
   bool entryVisible = false;
   bool repeatOpening = false;
   String? celebratedLoanId;
+  AdventureRewardEvent? adventureReward;
+  int _adventureRewardSequence = 0;
   void publish() => notifyListeners();
+
+  void showAdventureReward(AdventureRewardKind kind, {AdventureBadge? badge}) {
+    if (ledger.preferences.visualStyle != VisualStyle.adventure) return;
+    adventureReward = AdventureRewardEvent(
+      id: ++_adventureRewardSequence,
+      kind: kind,
+      badge: badge,
+    );
+    notifyListeners();
+  }
+
+  void clearAdventureReward(int id) {
+    if (adventureReward?.id == id) {
+      adventureReward = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _hapticIfEnabled() async {
+    if (!ledger.preferences.haptics) return;
+    try {
+      await HapticFeedback.lightImpact();
+    } catch (_) {
+      // A committed ledger action must not fail when the platform has no haptics.
+    }
+  }
 
   Future<void> initialize() async {
     final result = await store.load();
@@ -113,6 +150,7 @@ class AppController extends ChangeNotifier {
       if (loaded.ledger.encode() != ledger.encode()) {
         feedback = null;
         feedbackUndo = false;
+        adventureReward = null;
       }
       ledger = loaded.ledger;
       _normalizeRepeatDraftReferences();
@@ -145,6 +183,7 @@ class AppController extends ChangeNotifier {
     feedbackUndo = false;
     try {
       ledger = (await store.load()).ledger;
+      adventureReward = null;
       _normalizeRepeatDraftReferences();
       await _sync();
     } catch (_) {
@@ -403,6 +442,12 @@ class AppController extends ChangeNotifier {
       return false;
     }
     // commit marks busy synchronously, so a second tap cannot reach another write.
+    final unlocksFirstEntry =
+        current.editingId == null &&
+        next.adjustment == null &&
+        next.billId == null &&
+        next.loanId == null &&
+        !AdventureBadges.has(ledger, AdventureBadge.firstEntry);
     final result = await commit(
       (l) {
         var prepared = l;
@@ -445,7 +490,11 @@ class AppController extends ChangeNotifier {
       } catch (_) {
         /* The committed ID prevents a replay after restart. */
       }
-      if (ledger.preferences.haptics) await HapticFeedback.lightImpact();
+      showAdventureReward(
+        AdventureRewardKind.saved,
+        badge: unlocksFirstEntry ? AdventureBadge.firstEntry : null,
+      );
+      await _hapticIfEnabled();
       notifyListeners();
     }
     return result;
@@ -458,6 +507,7 @@ class AppController extends ChangeNotifier {
     );
     if (result) {
       celebratedLoanId = null;
+      adventureReward = null;
       publish();
     }
     return result;
@@ -480,20 +530,29 @@ class AppController extends ChangeNotifier {
     message: 'Entry restored',
     undo: true,
   );
-  Future<bool> preferences(Preferences value) => commit((l) {
-    final needsSchool =
-        value.widgetCategories.contains(schoolSuppliesCategory.id) &&
-        l.category(schoolSuppliesCategory.id) == null;
-    if (needsSchool && l.categories.length >= 100) {
-      throw const LedgerException(
-        'Keep up to 100 categories. Use an existing category before adding another.',
+  Future<bool> preferences(Preferences value) async {
+    final previousStyle = ledger.preferences.visualStyle;
+    final result = await commit((l) {
+      final needsSchool =
+          value.widgetCategories.contains(schoolSuppliesCategory.id) &&
+          l.category(schoolSuppliesCategory.id) == null;
+      if (needsSchool && l.categories.length >= 100) {
+        throw const LedgerException(
+          'Keep up to 100 categories. Use an existing category before adding another.',
+        );
+      }
+      return l.copy(
+        categories: [...l.categories, if (needsSchool) schoolSuppliesCategory],
+        preferences: value,
       );
+    });
+    if (result && previousStyle != value.visualStyle) {
+      final event = adventureReward;
+      if (event != null) clearAdventureReward(event.id);
     }
-    return l.copy(
-      categories: [...l.categories, if (needsSchool) schoolSuppliesCategory],
-      preferences: value,
-    );
-  });
+    return result;
+  }
+
   Future<bool> setBudget(String month, int cents) => commit(
     (l) => l.copy(budgets: {...l.budgets, month: cents}),
     message: 'Monthly budget updated',
@@ -689,6 +748,7 @@ class AppController extends ChangeNotifier {
       await store.saveRestoreRecovery(ledger);
       await store.save(preview.ledger);
       ledger = preview.ledger;
+      adventureReward = null;
       feedback =
           '${preview.added} entries restored · ${preview.skipped} already present';
       feedbackUndo = false;
@@ -723,8 +783,11 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void clearFeedback() {
-    feedback = null;
+  void clearFeedback([int? expectedId]) {
+    if (expectedId != null && expectedId != _feedbackSequence) return;
+    if (_feedback == null && !feedbackUndo) return;
+    _feedback = null;
+    _feedbackSequence++;
     feedbackUndo = false;
     notifyListeners();
   }

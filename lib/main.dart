@@ -10,6 +10,7 @@ import 'data/coordinated_store.dart';
 import 'data/background_allowance.dart';
 import 'domain/ledger.dart';
 import 'ui/design.dart';
+import 'ui/adventure.dart';
 import 'ui/entry_page.dart';
 import 'ui/screens.dart';
 
@@ -337,6 +338,11 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
           final reduced =
               app.ledger.preferences.reduceMotion ||
               MediaQuery.disableAnimationsOf(context);
+          final systemIcons = p.adventure
+              ? Brightness.light
+              : brightness == Brightness.dark
+              ? Brightness.light
+              : Brightness.dark;
           return VisualStyleScope(
             style: app.ledger.preferences.visualStyle,
             child: MotionScope(
@@ -347,18 +353,14 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
                 child: AnnotatedRegion<SystemUiOverlayStyle>(
                   value: SystemUiOverlayStyle(
                     statusBarColor: const Color(0x00000000),
-                    systemNavigationBarColor: p.background,
-                    statusBarIconBrightness: brightness == Brightness.dark
-                        ? Brightness.light
-                        : Brightness.dark,
-                    systemNavigationBarIconBrightness:
-                        brightness == Brightness.dark
-                        ? Brightness.light
-                        : Brightness.dark,
+                    systemNavigationBarColor: p.canvas,
+                    statusBarIconBrightness: systemIcons,
+                    systemNavigationBarIconBrightness: systemIcons,
                   ),
                   child: Stack(
                     children: [
                       child!,
+                      AdventureRewardOverlay(app: app),
                       FeedbackBanner(app: app),
                     ],
                   ),
@@ -386,7 +388,8 @@ class FeedbackBanner extends StatefulWidget {
 
 class _FeedbackBannerState extends State<FeedbackBanner> {
   Timer? timer;
-  String? last;
+  int? lastId;
+  int? dismissedId;
   @override
   void initState() {
     super.initState();
@@ -395,12 +398,14 @@ class _FeedbackBannerState extends State<FeedbackBanner> {
   }
 
   void changed() {
-    if (last == widget.app.feedback) return;
-    last = widget.app.feedback;
+    final id = widget.app.feedbackId;
+    if (lastId == id) return;
+    lastId = id;
+    dismissedId = null;
     timer?.cancel();
-    if (last != null) {
+    if (widget.app.feedback != null) {
       timer = Timer(const Duration(seconds: 7), () {
-        if (mounted) widget.app.clearFeedback();
+        if (mounted) widget.app.clearFeedback(id);
       });
     }
     if (mounted) setState(() {});
@@ -415,67 +420,86 @@ class _FeedbackBannerState extends State<FeedbackBanner> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.app.feedback == null) return const SizedBox.shrink();
+    final feedback = widget.app.feedback;
+    final feedbackId = widget.app.feedbackId;
+    if (feedback == null || dismissedId == feedbackId) {
+      return const SizedBox.shrink();
+    }
     final p = Palette.of(context);
     return Positioned(
       left: 24,
       right: 24,
       bottom: MediaQuery.paddingOf(context).bottom + 90,
-      child: Semantics(
-        liveRegion: true,
-        child: Container(
-          decoration: BoxDecoration(
-            color: p.surface,
-            borderRadius: BorderRadius.circular(p.cardRadius),
-            border: p.border,
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF000000).withValues(alpha: .12),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
-          child: Row(
-            children: [
-              Icon(
-                CupertinoIcons.checkmark_circle_fill,
-                color: p.green,
-                size: 22,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  widget.app.feedback!,
-                  style: textStyle(context, size: 14),
+      child: Dismissible(
+        key: ValueKey('feedback-$feedbackId'),
+        direction: DismissDirection.horizontal,
+        movementDuration: MotionScope.of(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 180),
+        resizeDuration: MotionScope.of(context)
+            ? null
+            : const Duration(milliseconds: 180),
+        onDismissed: (_) {
+          setState(() => dismissedId = feedbackId);
+          widget.app.clearFeedback(feedbackId);
+        },
+        child: Semantics(
+          liveRegion: true,
+          child: Container(
+            decoration: BoxDecoration(
+              color: p.surface,
+              borderRadius: BorderRadius.circular(p.cardRadius),
+              border: p.border,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF000000).withValues(alpha: .12),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
                 ),
-              ),
-              if (widget.app.feedbackUndo)
-                Press(
-                  onPressed: widget.app.busy
-                      ? null
-                      : () async {
-                          if (widget.app.busy || !widget.app.feedbackUndo) {
-                            return;
-                          }
-                          final success = await widget.app.undo();
-                          if (success) widget.app.feedbackUndo = false;
-                        },
-                  child: Text(
-                    'Undo',
-                    style: textStyle(
-                      context,
-                      size: 14,
-                      weight: FontWeight.w600,
-                      color: p.accent,
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+            child: Row(
+              children: [
+                Icon(
+                  CupertinoIcons.checkmark_circle_fill,
+                  color: p.green,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(feedback, style: textStyle(context, size: 14)),
+                ),
+                if (widget.app.feedbackUndo)
+                  Press(
+                    label: 'Undo last change',
+                    onPressed: widget.app.busy
+                        ? null
+                        : () async {
+                            if (widget.app.busy ||
+                                !widget.app.feedbackUndo ||
+                                widget.app.feedbackId != feedbackId) {
+                              return;
+                            }
+                            await widget.app.undo();
+                          },
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    child: Text(
+                      'Undo',
+                      style: textStyle(
+                        context,
+                        size: 14,
+                        weight: FontWeight.w600,
+                        color: p.accent,
+                      ),
                     ),
                   ),
-                )
-              else
                 Press(
                   label: 'Dismiss feedback',
-                  onPressed: widget.app.clearFeedback,
+                  onPressed: () => widget.app.clearFeedback(feedbackId),
                   padding: const EdgeInsets.all(10),
                   child: Icon(
                     CupertinoIcons.xmark,
@@ -483,7 +507,8 @@ class _FeedbackBannerState extends State<FeedbackBanner> {
                     size: 16,
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

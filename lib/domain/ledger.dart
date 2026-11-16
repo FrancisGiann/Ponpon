@@ -465,6 +465,7 @@ enum VisualStyle {
   moss,
   clay,
   graphite,
+  adventure,
 }
 
 class Preferences {

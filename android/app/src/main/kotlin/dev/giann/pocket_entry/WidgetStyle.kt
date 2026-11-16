@@ -19,7 +19,7 @@ data class WidgetStyle(
     val danger: Int,
 ) {
     companion object {
-        private val names = setOf("original", "powderBlue", "notebook", "midnight", "moss", "clay", "graphite")
+        private val names = setOf("original", "powderBlue", "notebook", "midnight", "moss", "clay", "graphite", "adventure")
 
         fun normalize(value: String?): String = value?.takeIf { it in names } ?: "original"
 
@@ -29,6 +29,8 @@ data class WidgetStyle(
                 Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
             val dark = style == "midnight" || style == "graphite" || theme == "dark" || theme == "system" && systemDark
             val colors = when (style) {
+                "adventure" -> if (dark) listOf("#1B2119", "#46422F", "#F4E9CF", "#C9BD9D", "#E0BC70", "#FFBAB3")
+                    else listOf("#F4ECD8", "#E9E0C8", "#342D21", "#635943", "#536638", "#AA3429")
                 "powderBlue" -> if (dark) listOf("#142431", "#304F66", "#EDF7FF", "#B8CCD9", "#B7D9F1", "#FFBAB3")
                     else listOf("#EFF6FC", "#E1EDF5", "#173447", "#4B6274", "#244E6D", "#AA3429")
                 "notebook" -> if (dark) listOf("#25231F", "#4B4030", "#F5ECDD", "#C9BCA7", "#E3C895", "#FFBAB3")
@@ -43,6 +45,7 @@ data class WidgetStyle(
                     else listOf("#F6F4F1", "#F0E8F1", "#27212A", "#6A606F", "#5B315D", "#AA3429")
             }
             val root = when (style) {
+                "adventure" -> if (dark) R.drawable.widget_background_adventure_dark else R.drawable.widget_background_adventure
                 "powderBlue" -> if (dark) R.drawable.widget_background_powder_blue_dark else R.drawable.widget_background_powder_blue
                 "notebook" -> if (dark) R.drawable.widget_background_notebook_dark else R.drawable.widget_background_notebook
                 "midnight" -> R.drawable.widget_background_midnight
@@ -52,6 +55,7 @@ data class WidgetStyle(
                 else -> if (dark) R.drawable.widget_background_dark else R.drawable.widget_background
             }
             val cell = when (style) {
+                "adventure" -> if (dark) R.drawable.widget_cell_adventure_dark else R.drawable.widget_cell_adventure
                 "powderBlue" -> if (dark) R.drawable.widget_cell_powder_blue_dark else R.drawable.widget_cell_powder_blue
                 "notebook" -> if (dark) R.drawable.widget_cell_notebook_dark else R.drawable.widget_cell_notebook
                 "midnight" -> R.drawable.widget_cell_midnight
@@ -61,6 +65,7 @@ data class WidgetStyle(
                 else -> if (dark) R.drawable.widget_chip_dark else R.drawable.widget_chip
             }
             val categoryOutline = when (style) {
+                "adventure" -> if (dark) R.drawable.widget_category_outline_adventure_dark else R.drawable.widget_category_outline_adventure
                 "powderBlue" -> if (dark) R.drawable.widget_category_outline_powder_blue_dark else R.drawable.widget_category_outline_powder_blue
                 "notebook" -> if (dark) R.drawable.widget_category_outline_notebook_dark else R.drawable.widget_category_outline_notebook
                 "midnight" -> R.drawable.widget_category_outline_midnight

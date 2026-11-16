@@ -100,9 +100,19 @@ extension BillsAndBalance on AppController {
     Wallet wallet,
     Category category, {
     required bool confirmed,
-  }) {
-    if (!confirmed) return Future.value(false);
-    return commit(
+  }) async {
+    if (!confirmed) return false;
+    final beforeBill = ledger.bill(reviewed.id);
+    final wasComplete =
+        beforeBill?.paymentCount != null &&
+        beforeBill!.paidInstallments(ledger) >= beforeBill.paymentCount!;
+    final hadFinishedBillBadge = AdventureBadges.has(
+      ledger,
+      AdventureBadge.finishedBill,
+    );
+    final restoresDeletedPayment =
+        ledger.entry(reviewed.paymentId(dueDate))?.deleted == true;
+    final result = await commit(
       (l) {
         final bill = l.bill(reviewed.id);
         if (bill == null ||
@@ -146,6 +156,21 @@ extension BillsAndBalance on AppController {
       message: 'Bill payment recorded',
       undo: true,
     );
+    final savedBill = ledger.bill(reviewed.id);
+    final completedNow =
+        result &&
+        !wasComplete &&
+        !restoresDeletedPayment &&
+        savedBill?.paymentCount != null &&
+        savedBill!.paidInstallments(ledger) >= savedBill.paymentCount!;
+    if (completedNow) {
+      showAdventureReward(
+        AdventureRewardKind.billCompleted,
+        badge: hadFinishedBillBadge ? null : AdventureBadge.finishedBill,
+      );
+      await _hapticIfEnabled();
+    }
+    return result;
   }
 }
 
@@ -230,6 +255,11 @@ extension Loans on AppController {
     required Wallet wallet,
     String note = '',
   }) async {
+    final wasComplete = reviewed.completed(ledger);
+    final hadFinalLoanBadge = AdventureBadges.has(
+      ledger,
+      AdventureBadge.finalLoanRepayment,
+    );
     final now = clock().millisecondsSinceEpoch;
     final repayment = Entry(
       id: newId(),
@@ -248,9 +278,18 @@ extension Loans on AppController {
       message: 'Repayment recorded',
       undo: true,
     );
-    if (result && ledger.loan(reviewed.id)?.completed(ledger) == true) {
+    final completedNow =
+        result &&
+        !wasComplete &&
+        ledger.loan(reviewed.id)?.completed(ledger) == true;
+    if (completedNow) {
       celebratedLoanId = reviewed.id;
+      showAdventureReward(
+        AdventureRewardKind.loanCompleted,
+        badge: hadFinalLoanBadge ? null : AdventureBadge.finalLoanRepayment,
+      );
       publish();
+      await _hapticIfEnabled();
     }
     return result;
   }

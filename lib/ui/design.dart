@@ -28,6 +28,7 @@ class Palette {
   );
   Color tone(int light, int night) => Color(dark ? night : light);
   Color get background => switch (style) {
+    VisualStyle.adventure => tone(0xFFFFF2CB, 0xFF10251F),
     VisualStyle.powderBlue => tone(0xFFEFF6FC, 0xFF142431),
     VisualStyle.notebook => tone(0xFFF6F1E5, 0xFF25231F),
     VisualStyle.midnight => const Color(0xFF0C1420),
@@ -37,6 +38,7 @@ class Palette {
     _ => tone(0xFFF6F4F1, 0xFF151416),
   };
   Color get surface => switch (style) {
+    VisualStyle.adventure => tone(0xFFFFF2CB, 0xFF193A32),
     VisualStyle.powderBlue => tone(0xFFF8FCFF, 0xFF1F3546),
     VisualStyle.notebook => tone(0xFFFFFCF4, 0xFF302C26),
     VisualStyle.midnight => const Color(0xFF152235),
@@ -46,6 +48,7 @@ class Palette {
     _ => tone(0xFFFFFFFF, 0xFF232125),
   };
   Color get ink => switch (style) {
+    VisualStyle.adventure => tone(0xFF18352D, 0xFFFFF0C5),
     VisualStyle.powderBlue => tone(0xFF173447, 0xFFEDF7FF),
     VisualStyle.notebook => tone(0xFF302A23, 0xFFF5ECDD),
     VisualStyle.midnight => const Color(0xFFF0F5FF),
@@ -55,6 +58,7 @@ class Palette {
     _ => tone(0xFF27212A, 0xFFF7F3F1),
   };
   Color get secondary => switch (style) {
+    VisualStyle.adventure => tone(0xFF38554C, 0xFFC5D8B5),
     VisualStyle.powderBlue => tone(0xFF4B6274, 0xFFB8CCD9),
     VisualStyle.notebook => tone(0xFF685C4D, 0xFFC9BCA7),
     VisualStyle.midnight => const Color(0xFFB8C8DC),
@@ -64,6 +68,7 @@ class Palette {
     _ => tone(0xFF6A606F, 0xFFBBB3BD),
   };
   Color get line => switch (style) {
+    VisualStyle.adventure => tone(0xFF173C34, 0xFFDDB14D),
     VisualStyle.powderBlue => tone(0xFFB7CBDA, 0xFF526B7E),
     VisualStyle.notebook => tone(0xFFCFC3AC, 0xFF716958),
     VisualStyle.midnight => const Color(0xFF455A76),
@@ -73,6 +78,7 @@ class Palette {
     _ => tone(0xFFE5DFE7, 0xFF3F3943),
   };
   Color get accent => switch (style) {
+    VisualStyle.adventure => tone(0xFF1C5741, 0xFFEBC75E),
     VisualStyle.powderBlue => tone(0xFF244E6D, 0xFFB7D9F1),
     VisualStyle.notebook => tone(0xFF55432B, 0xFFE3C895),
     VisualStyle.midnight => const Color(0xFFC1DCFF),
@@ -82,6 +88,7 @@ class Palette {
     _ => tone(0xFF5B315D, 0xFFE9CCE6),
   };
   Color get onAccent => switch (style) {
+    VisualStyle.adventure => tone(0xFFFFF3CE, 0xFF1D382F),
     VisualStyle.powderBlue => tone(0xFFFFFFFF, 0xFF122B3D),
     VisualStyle.notebook => tone(0xFFFFFFFF, 0xFF302519),
     VisualStyle.midnight => const Color(0xFF10233D),
@@ -91,6 +98,7 @@ class Palette {
     _ => tone(0xFFFFFFFF, 0xFF322235),
   };
   Color get tint => switch (style) {
+    VisualStyle.adventure => tone(0xFFE6D69D, 0xFF35584B),
     VisualStyle.powderBlue => tone(0xFFD8EAF6, 0xFF304F66),
     VisualStyle.notebook => tone(0xFFEDE1CA, 0xFF4B4030),
     VisualStyle.midnight => const Color(0xFF243D5B),
@@ -100,6 +108,7 @@ class Palette {
     _ => tone(0xFFF0E8F1, 0xFF382E3C),
   };
   double get cardRadius => switch (style) {
+    VisualStyle.adventure => 4,
     VisualStyle.powderBlue => 28,
     VisualStyle.notebook || VisualStyle.midnight => 12,
     VisualStyle.moss => 16,
@@ -108,6 +117,7 @@ class Palette {
     _ => 20,
   };
   double get controlRadius => switch (style) {
+    VisualStyle.adventure => 4,
     VisualStyle.powderBlue => 24,
     VisualStyle.notebook || VisualStyle.midnight => 10,
     VisualStyle.moss => 14,
@@ -116,6 +126,7 @@ class Palette {
     _ => 16,
   };
   double get sheetRadius => switch (style) {
+    VisualStyle.adventure => 8,
     VisualStyle.powderBlue => 34,
     VisualStyle.notebook => 18,
     VisualStyle.midnight => 16,
@@ -125,6 +136,7 @@ class Palette {
     _ => 30,
   };
   double get navRadius => switch (style) {
+    VisualStyle.adventure => 4,
     VisualStyle.powderBlue => 30,
     VisualStyle.notebook || VisualStyle.midnight => 14,
     VisualStyle.moss => 20,
@@ -133,6 +145,7 @@ class Palette {
     _ => 26,
   };
   double get surfaceBorderWidth => switch (style) {
+    VisualStyle.adventure => 2,
     VisualStyle.original => .75,
     VisualStyle.powderBlue => 1,
     VisualStyle.notebook => 1.15,
@@ -149,6 +162,8 @@ class Palette {
       ? 13
       : style == VisualStyle.powderBlue
       ? 18
+      : style == VisualStyle.adventure
+      ? 17
       : style == VisualStyle.moss
       ? 12
       : style == VisualStyle.clay
@@ -162,6 +177,12 @@ class Palette {
   Color get blueTint => tone(0xFFEAF1FA, 0xFF29374C);
   Color get danger => tone(0xFFAA3429, 0xFFFFBAB3);
   Color get amber => tone(0xFF84551C, 0xFFEFCF9C);
+  Color get pixelGold =>
+      style == VisualStyle.adventure ? tone(0xFFFFD35B, 0xFFEFCF9C) : amber;
+  Color get canvas => style == VisualStyle.adventure
+      ? tone(0xFF103A2F, 0xFF10251F)
+      : background;
+  bool get adventure => style == VisualStyle.adventure;
 }
 
 /// Static, low-contrast decoration stays behind content and never receives input.
@@ -190,6 +211,15 @@ class SurfaceDetail extends CustomPainter {
         false,
         paint,
       );
+    } else if (palette.style == VisualStyle.adventure) {
+      final glow = Paint()
+        ..color = palette.amber.withValues(alpha: .09)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+      canvas.drawCircle(Offset(size.width - 28, 16), 8, glow);
+      paint.strokeWidth = .7;
+      for (var i = 0; i < 3; i++) {
+        canvas.drawCircle(Offset(size.width - 28 + i * 7, 16), 1.4, paint);
+      }
     }
   }
 
@@ -212,8 +242,9 @@ class MotionScope extends InheritedWidget {
 
 /// Keep every segment's own hit and semantics bounds accessible.
 class SegmentLabel extends StatelessWidget {
-  const SegmentLabel(this.label, {super.key});
+  const SegmentLabel(this.label, {super.key, this.color});
   final String label;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) => ConstrainedBox(
@@ -223,7 +254,12 @@ class SegmentLabel extends StatelessWidget {
       child: Center(
         child: Text(
           label,
-          style: textStyle(context, size: 13, weight: FontWeight.w600),
+          style: textStyle(
+            context,
+            size: 13,
+            weight: FontWeight.w600,
+            color: color,
+          ),
         ),
       ),
     ),
@@ -257,6 +293,7 @@ TextStyle textStyle(
     VisualStyle.moss => size >= 28 ? -.5 : 0,
     VisualStyle.clay => size >= 28 ? -.6 : -.05,
     VisualStyle.graphite => size >= 28 ? -.7 : -.1,
+    VisualStyle.adventure => size >= 28 ? -.55 : -.05,
   },
   fontFeatures: tabular ? const [FontFeature.tabularFigures()] : null,
 );
@@ -619,6 +656,8 @@ class Press extends StatefulWidget {
     this.label,
     this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     this.radius,
+    this.raised = false,
+    this.outlined = false,
   });
   final Widget child;
   final VoidCallback? onPressed;
@@ -626,6 +665,7 @@ class Press extends StatefulWidget {
   final String? label;
   final EdgeInsets padding;
   final double? radius;
+  final bool raised, outlined;
   @override
   State<Press> createState() => _PressState();
 }
@@ -635,6 +675,9 @@ class _PressState extends State<Press> {
   @override
   Widget build(BuildContext context) {
     final reduced = MotionScope.of(context);
+    final p = Palette.of(context);
+    final adventureRaised = p.adventure && widget.raised;
+    final adventureOutlined = p.adventure && widget.outlined;
     final interactive = Listener(
       onPointerDown: (_) {
         if (mounted && widget.onPressed != null) {
@@ -648,21 +691,59 @@ class _PressState extends State<Press> {
         if (mounted) setState(() => pressed = false);
       },
       child: AnimatedScale(
-        scale: pressed && !reduced ? .975 : 1,
-        duration: Duration(milliseconds: reduced ? 0 : (pressed ? 90 : 260)),
+        scale: pressed && !reduced ? .985 : 1,
+        duration: Duration(milliseconds: reduced ? 0 : (pressed ? 90 : 220)),
         curve: pressed ? Curves.easeOutCubic : Curves.easeOutBack,
-        child: CupertinoButton(
-          padding: widget.padding,
-          color: widget.color,
-          borderRadius: BorderRadius.circular(
-            widget.radius ?? Palette.of(context).controlRadius,
-          ),
-          minimumSize: const Size(48, 48),
-          disabledColor: Palette.of(context).line,
-          onPressed: widget.onPressed,
-          child: DefaultTextStyle(
-            style: textStyle(context, weight: FontWeight.w600),
-            child: widget.child,
+        child: Container(
+          decoration: adventureRaised
+              ? BoxDecoration(
+                  color: widget.onPressed == null
+                      ? p.line
+                      : p.accent.withValues(alpha: .76),
+                  borderRadius: BorderRadius.circular(
+                    widget.radius ?? p.controlRadius,
+                  ),
+                  border: Border.all(color: p.ink, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: p.ink.withValues(alpha: .55),
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                )
+              : adventureOutlined
+              ? BoxDecoration(
+                  color: p.surface,
+                  borderRadius: BorderRadius.circular(
+                    widget.radius ?? p.controlRadius,
+                  ),
+                  border: Border.all(
+                    color: p.line,
+                    width: p.adventure ? 2 : 1.2,
+                  ),
+                )
+              : null,
+          padding: adventureRaised && widget.onPressed != null
+              ? const EdgeInsets.only(bottom: 3)
+              : EdgeInsets.zero,
+          child: Transform.translate(
+            offset: Offset(0, pressed && !reduced && adventureRaised ? 2 : 0),
+            child: CupertinoButton(
+              padding: widget.padding,
+              color: p.adventure && pressed && !widget.raised
+                  ? p.tint
+                  : widget.color,
+              borderRadius: BorderRadius.circular(
+                widget.radius ?? p.controlRadius,
+              ),
+              minimumSize: const Size(48, 48),
+              disabledColor: p.line,
+              onPressed: widget.onPressed,
+              child: DefaultTextStyle(
+                style: textStyle(context, weight: FontWeight.w600),
+                child: widget.child,
+              ),
+            ),
           ),
         ),
       ),
@@ -695,6 +776,7 @@ class PrimaryButton extends StatelessWidget {
     return Press(
       onPressed: onPressed,
       color: p.accent,
+      raised: true,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -739,7 +821,8 @@ class SecondaryButton extends StatelessWidget {
     final p = Palette.of(context);
     return Press(
       onPressed: onPressed,
-      color: p.tint,
+      color: p.adventure ? p.surface : p.tint,
+      outlined: true,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -776,6 +859,9 @@ class Surface extends StatelessWidget {
     this.roundTop = true,
     this.roundBottom = true,
     this.detailBand = false,
+    this.color,
+    this.edgeColor,
+    this.elevated = false,
   });
   final Widget child;
   final EdgeInsets padding;
@@ -783,6 +869,8 @@ class Surface extends StatelessWidget {
 
   /// Reserve a small decorative strip above the content when a preview needs it.
   final bool detailBand;
+  final Color? color, edgeColor;
+  final bool elevated;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -801,21 +889,42 @@ class Surface extends StatelessWidget {
         : Padding(padding: padding, child: child);
     return Container(
       decoration: BoxDecoration(
-        color: p.surface,
+        color: color ?? p.surface,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(roundTop ? p.cardRadius : 0),
           bottom: Radius.circular(roundBottom ? p.cardRadius : 0),
         ),
         border: Border(
-          left: BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth),
-          right: BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth),
+          left: BorderSide(
+            color: edgeColor ?? p.surfaceEdge,
+            width: p.surfaceBorderWidth,
+          ),
+          right: BorderSide(
+            color: edgeColor ?? p.surfaceEdge,
+            width: p.surfaceBorderWidth,
+          ),
           top: roundTop
-              ? BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth)
+              ? BorderSide(
+                  color: edgeColor ?? p.surfaceEdge,
+                  width: p.surfaceBorderWidth,
+                )
               : BorderSide.none,
           bottom: roundBottom
-              ? BorderSide(color: p.surfaceEdge, width: p.surfaceBorderWidth)
+              ? BorderSide(
+                  color: edgeColor ?? p.surfaceEdge,
+                  width: p.surfaceBorderWidth,
+                )
               : BorderSide.none,
         ),
+        boxShadow: elevated
+            ? [
+                BoxShadow(
+                  color: p.ink.withValues(alpha: .08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: contents,

@@ -46,7 +46,18 @@ void main() {
     await tester.enterText(find.byType(CupertinoTextField).at(1), '50.00');
     await tester.tap(find.text('Already existed'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(CupertinoTextField).at(2), '10.00');
+    final paidField = find.byType(CupertinoTextField).at(2);
+    expect(tester.widget<CupertinoTextField>(paidField).controller!.text, '');
+    expect(tester.widget<CupertinoTextField>(paidField).placeholder, '0.00');
+    await tester.enterText(paidField, '10.00');
+    await tester.tap(find.text('New loan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Already existed'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<CupertinoTextField>(paidField).controller!.text,
+      '10.00',
+    );
     await tester.tap(find.text('Save loan'));
     await tester.pumpAndSettle();
 
@@ -90,6 +101,46 @@ void main() {
       find.byKey(const ValueKey('bill-celebration-completed')),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('blank initial repayment saves as zero', (tester) async {
+    configure(tester, const Size(390, 844));
+    final app = AppController(
+      store: MemoryLedgerStore(Ledger.empty()),
+      clock: () => DateTime(2026, 11, 16, 12),
+    );
+    addTearDown(app.dispose);
+    app.ledger = Ledger.empty().copy(
+      openings: {Wallet.cash: 10000},
+      preferences: const Preferences(welcomed: true, reduceMotion: true),
+    );
+
+    await tester.pumpWidget(
+      PocketApp(
+        controller: app,
+        testHome: HomeShell(app: app, initialTab: 3),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .descendant(of: find.byType(LoansPage), matching: find.byType(Press))
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(CupertinoTextField).at(0), 'Ari');
+    await tester.enterText(find.byType(CupertinoTextField).at(1), '50.00');
+    await tester.tap(find.text('Already existed'));
+    await tester.pumpAndSettle();
+    final paidField = find.byType(CupertinoTextField).at(2);
+    expect(tester.widget<CupertinoTextField>(paidField).controller!.text, '');
+    expect(tester.widget<CupertinoTextField>(paidField).placeholder, '0.00');
+
+    await tester.tap(find.text('Save loan'));
+    await tester.pumpAndSettle();
+    expect(app.ledger.loans.single.alreadyRepaidCentavos, 0);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });

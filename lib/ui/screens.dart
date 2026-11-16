@@ -5,8 +5,10 @@ import 'package:flutter/cupertino.dart';
 import '../app_controller.dart';
 import '../data/native_bridge.dart';
 import '../domain/ledger.dart';
+import 'adventure.dart';
 import 'design.dart';
 import 'entry_page.dart';
+import 'pixel_adventure.dart';
 
 part 'wallet_screens.dart';
 part 'allowance_page.dart';
@@ -198,91 +200,236 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell>
+    with SingleTickerProviderStateMixin {
   late int tab = widget.initialTab;
+
+  late final AnimationController tabMotion =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 220),
+        value: 1,
+      )..addStatusListener((status) {
+        if (status == AnimationStatus.completed &&
+            mounted &&
+            outgoingTab != null) {
+          setState(() => outgoingTab = null);
+        }
+      });
+  int? outgoingTab;
+
+  void selectTab(int next) {
+    if (next == tab) return;
+    if (MotionScope.of(context)) {
+      setState(() {
+        tab = next;
+        outgoingTab = null;
+      });
+      tabMotion.value = 1;
+      return;
+    }
+    setState(() {
+      outgoingTab = tab;
+      tab = next;
+    });
+    tabMotion.forward(from: 0);
+  }
+
+  Widget _tabPages(BuildContext context, Palette p) {
+    final pages = [
+      TodayPage(
+        app: widget.app,
+        onHistory: () => selectTab(1),
+        onNavigate: selectTab,
+      ),
+      HistoryPage(app: widget.app),
+      PlanPage(app: widget.app),
+      LoansPage(app: widget.app),
+    ];
+    if (!p.adventure) return IndexedStack(index: tab, children: pages);
+    return AnimatedBuilder(
+      animation: tabMotion,
+      builder: (context, _) {
+        final progress = Curves.easeOutCubic.transform(tabMotion.value);
+        final direction = (tab > (outgoingTab ?? tab) ? 1.0 : -1.0);
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            for (var index = 0; index < pages.length; index++)
+              Positioned.fill(
+                key: ValueKey('adventure-page-$index'),
+                child: Builder(
+                  builder: (context) {
+                    final isCurrent = index == tab;
+                    final isLeaving = index == outgoingTab;
+                    final isVisible = isCurrent || isLeaving;
+                    final opacity = isCurrent
+                        ? progress
+                        : isLeaving
+                        ? 1 - progress
+                        : 0.0;
+                    final dx = isCurrent
+                        ? direction * (1 - progress) * 18
+                        : isLeaving
+                        ? -direction * progress * 12
+                        : 0.0;
+                    return Offstage(
+                      offstage: !isVisible,
+                      child: TickerMode(
+                        enabled: isVisible,
+                        child: IgnorePointer(
+                          ignoring: !isCurrent,
+                          child: ExcludeSemantics(
+                            excluding: !isCurrent,
+                            child: Opacity(
+                              opacity: opacity,
+                              child: Transform.translate(
+                                offset: Offset(dx, 0),
+                                child: pages[index],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    tabMotion.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.app,
     builder: (context, _) {
       final p = Palette.of(context);
       return CupertinoPageScaffold(
-        backgroundColor: p.background,
+        backgroundColor: p.canvas,
         child: SafeArea(
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 640),
               child: Column(
                 children: [
-                  Expanded(
-                    child: IndexedStack(
-                      index: tab,
-                      children: [
-                        TodayPage(
-                          app: widget.app,
-                          onHistory: () => setState(() => tab = 1),
-                        ),
-                        HistoryPage(app: widget.app),
-                        PlanPage(app: widget.app),
-                        LoansPage(app: widget.app),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(20, 6, 20, 8),
-                    decoration: BoxDecoration(
-                      color: p.surface,
-                      borderRadius: BorderRadius.circular(p.navRadius),
-                      border: p.border,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < 4; i++)
-                          Expanded(
-                            child: Press(
-                              onPressed: () => setState(() => tab = i),
-                              color: tab == i ? p.tint : null,
-                              label:
-                                  '${['Today', 'History', 'Plan', 'Loans'][i]} tab${tab == i ? ', selected' : ''}',
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8,
-                                horizontal: 4,
-                              ),
-                              radius: p.controlCorner(20),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    [
-                                      CupertinoIcons.house,
-                                      CupertinoIcons.list_bullet,
-                                      CupertinoIcons.chart_bar,
-                                      CupertinoIcons.person_2,
-                                    ][i],
-                                    color: tab == i ? p.accent : p.secondary,
-                                    size: 23,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    ['Today', 'History', 'Plan', 'Loans'][i],
-                                    style: textStyle(
-                                      context,
-                                      size: 11,
-                                      weight: tab == i
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                      color: tab == i ? p.accent : p.secondary,
+                  Expanded(child: _tabPages(context, p)),
+                  Builder(
+                    builder: (context) {
+                      final navigation = Row(
+                        children: [
+                          for (var i = 0; i < 4; i++)
+                            Expanded(
+                              child: Press(
+                                onPressed: () => selectTab(i),
+                                color: tab == i
+                                    ? p.adventure
+                                          ? p.accent
+                                          : p.tint
+                                    : p.adventure
+                                    ? p.ink
+                                    : null,
+                                raised: p.adventure && tab == i,
+                                label:
+                                    '${['Today', 'History', 'Plan', 'Loans'][i]} tab${tab == i ? ', selected' : ''}',
+                                padding: EdgeInsets.symmetric(
+                                  vertical: p.adventure ? 4 : 8,
+                                  horizontal: 4,
+                                ),
+                                radius: p.adventure ? 0 : p.controlCorner(20),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      [
+                                        CupertinoIcons.house,
+                                        CupertinoIcons.list_bullet,
+                                        CupertinoIcons.chart_bar,
+                                        CupertinoIcons.person_2,
+                                      ][i],
+                                      color: p.adventure
+                                          ? tab == i
+                                                ? p.onAccent
+                                                : p.surface
+                                          : tab == i
+                                          ? p.accent
+                                          : p.secondary,
+                                      size: p.adventure ? 20 : 23,
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      ['Today', 'History', 'Plan', 'Loans'][i],
+                                      style: textStyle(
+                                        context,
+                                        size: p.adventure ? 10 : 11,
+                                        weight: tab == i
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: p.adventure
+                                            ? tab == i
+                                                  ? p.onAccent
+                                                  : p.surface
+                                            : tab == i
+                                            ? p.accent
+                                            : p.secondary,
+                                      ),
+                                    ),
+                                    if (p.adventure)
+                                      AnimatedContainer(
+                                        duration: Duration(
+                                          milliseconds: MotionScope.of(context)
+                                              ? 0
+                                              : 180,
+                                        ),
+                                        width: tab == i ? 18 : 4,
+                                        height: 3,
+                                        margin: const EdgeInsets.only(top: 2),
+                                        color: tab == i
+                                            ? p.pixelGold
+                                            : p.line.withValues(alpha: .5),
+                                      ),
+                                  ],
+                                ),
                               ),
                             ),
+                        ],
+                      );
+                      if (p.adventure) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+                          child: PixelFrame(
+                            key: const ValueKey('home-tab-bar'),
+                            fillColor: p.ink,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 4,
+                            ),
+                            child: navigation,
                           ),
-                      ],
-                    ),
+                        );
+                      }
+                      return Container(
+                        key: const ValueKey('home-tab-bar'),
+                        margin: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+                        decoration: BoxDecoration(
+                          color: p.surface,
+                          borderRadius: BorderRadius.circular(p.navRadius),
+                          border: p.border,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        child: navigation,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -295,9 +442,15 @@ class _HomeShellState extends State<HomeShell> {
 }
 
 class TodayPage extends StatelessWidget {
-  const TodayPage({super.key, required this.app, required this.onHistory});
+  const TodayPage({
+    super.key,
+    required this.app,
+    required this.onHistory,
+    required this.onNavigate,
+  });
   final AppController app;
   final VoidCallback onHistory;
+  final ValueChanged<int> onNavigate;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context), l = app.ledger, now = app.clock();
@@ -306,6 +459,18 @@ class TodayPage extends StatelessWidget {
     final budget = l.budgets[month] ?? 0;
     final recent = l.active.take(4).toList();
     final shortcuts = l.quickCategories;
+    if (p.adventure) {
+      return _adventureToday(
+        context,
+        p: p,
+        ledger: l,
+        now: now,
+        spent: spent,
+        budget: budget,
+        recent: recent,
+        shortcuts: shortcuts,
+      );
+    }
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -600,11 +765,633 @@ class TodayPage extends StatelessWidget {
       ],
     );
   }
+
+  Widget _adventureToday(
+    BuildContext context, {
+    required Palette p,
+    required Ledger ledger,
+    required DateTime now,
+    required int spent,
+    required int budget,
+    required List<Entry> recent,
+    required List<Category> shortcuts,
+  }) {
+    final today = dayKey(now);
+    final balances = HomeBalances(app: app);
+    final upcomingBills = ledger.bills
+        .where((bill) => bill.nextDue(ledger) != null)
+        .length;
+    return ListView(
+      key: const ValueKey('adventure-today-scroll'),
+      padding: EdgeInsets.zero,
+      children: [
+        PixelAdventureHero(
+          app: app,
+          ledger: ledger,
+          onSettings: () => pushPocket<void>(context, SettingsPage(app: app)),
+          onWallets: () => balances.showWallets(context),
+          onAdd: () => openEntry(context, app),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 0),
+          child: Column(
+            children: [
+              _AdventureDestinationRow(
+                key: const ValueKey('adventure-destination-plan'),
+                title: 'Plan',
+                subtitle: 'Budgets, spending and bill progress',
+                asset: 'assets/adventure/pixel_bills.png',
+                semanticsLabel: 'Open monthly plan and bill progress',
+                onPressed: () => onNavigate(2),
+              ),
+              const SizedBox(height: 8),
+              _AdventureDestinationRow(
+                key: const ValueKey('adventure-destination-loans'),
+                title: 'Loans',
+                subtitle: 'Borrower balances and repayments',
+                asset: 'assets/adventure/pixel_loans.png',
+                semanticsLabel: 'Open loan repayment tracker',
+                onPressed: () => onNavigate(3),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: _AdventureFinanceDetails(
+            initiallyExpanded: app.notice != null,
+            summary:
+                'Quick categories · recent activity · bills · monthly budget',
+            child: Column(
+              children: [
+                if (app.notice != null) ...[
+                  Surface(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(app.notice!, style: textStyle(context, size: 14)),
+                        SecondaryButton(
+                          'Got it',
+                          onPressed: () {
+                            app.notice = null;
+                            app.publish();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                if (upcomingBills > 0) ...[
+                  _AdventureDashboardLink(
+                    title: 'Upcoming bills',
+                    subtitle:
+                        '$upcomingBills scheduled ${upcomingBills == 1 ? 'payment' : 'payments'} · review dates and record what you paid',
+                    asset: 'assets/adventure/pixel_bills.png',
+                    onPressed: () =>
+                        pushPocket<void>(context, BillsPage(app: app)),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                _AdventureQuickCategories(
+                  shortcuts: shortcuts,
+                  onManage: () =>
+                      pushPocket<void>(context, CategoriesPage(app: app)),
+                  onAdd: (id) => openEntry(context, app, categoryId: id),
+                ),
+                const SizedBox(height: 10),
+                _AdventureRecentEntries(
+                  app: app,
+                  recent: recent,
+                  spentToday: ledger.total(EntryKind.expense, date: today),
+                  onHistory: onHistory,
+                ),
+                const SizedBox(height: 10),
+                Surface(
+                  key: const ValueKey('adventure-monthly-budget'),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Image.asset(
+                            'assets/adventure/pixel_bills.png',
+                            width: 30,
+                            height: 30,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.none,
+                            excludeFromSemantics: true,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${monthNames[now.month - 1]} spending',
+                              style: textStyle(
+                                context,
+                                size: 16,
+                                weight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            money(spent),
+                            style: textStyle(
+                              context,
+                              size: 15,
+                              weight: FontWeight.w700,
+                              tabular: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (budget > 0) ...[
+                        BudgetBar(spent: spent, budget: budget),
+                        const SizedBox(height: 6),
+                        Text(
+                          spent <= budget
+                              ? '${money(budget - spent)} left of ${money(budget)}'
+                              : '${money(spent - budget)} over your budget',
+                          style: textStyle(
+                            context,
+                            size: 12,
+                            color: spent <= budget ? p.secondary : p.danger,
+                          ),
+                        ),
+                      ] else
+                        Text(
+                          'Set a monthly budget in Plan whenever you’re ready.',
+                          style: textStyle(
+                            context,
+                            size: 12,
+                            color: p.secondary,
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      SecondaryButton(
+                        'Open monthly plan',
+                        icon: CupertinoIcons.chart_bar,
+                        onPressed: () => onNavigate(2),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+      ],
+    );
+  }
+}
+
+class _AdventureDestinationRow extends StatelessWidget {
+  const _AdventureDestinationRow({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.asset,
+    required this.semanticsLabel,
+    required this.onPressed,
+  });
+
+  final String title, subtitle, asset, semanticsLabel;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return PixelFrame(
+      fillColor: p.surface,
+      child: Press(
+        label: semanticsLabel,
+        onPressed: onPressed,
+        color: p.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        child: Row(
+          children: [
+            Image.asset(
+              asset,
+              width: 42,
+              height: 42,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.none,
+              excludeFromSemantics: true,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: textStyle(
+                      context,
+                      size: 17,
+                      weight: FontWeight.w800,
+                      color: p.ink,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: textStyle(context, size: 11, color: p.secondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(CupertinoIcons.chevron_right, color: p.ink, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AdventureFinanceDetails extends StatefulWidget {
+  const _AdventureFinanceDetails({
+    required this.child,
+    required this.summary,
+    this.initiallyExpanded = false,
+  });
+
+  final Widget child;
+  final String summary;
+  final bool initiallyExpanded;
+
+  @override
+  State<_AdventureFinanceDetails> createState() =>
+      _AdventureFinanceDetailsState();
+}
+
+class _AdventureFinanceDetailsState extends State<_AdventureFinanceDetails> {
+  late bool expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return PixelFrame(
+      fillColor: p.surface,
+      padding: const EdgeInsets.all(3),
+      child: Column(
+        children: [
+          Press(
+            key: const ValueKey('adventure-finance-details-toggle'),
+            label: expanded
+                ? 'Hide finance details'
+                : 'Show finance details. ${widget.summary}',
+            onPressed: () => setState(() => expanded = !expanded),
+            color: p.surface,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
+                Icon(CupertinoIcons.square_grid_2x2, color: p.accent, size: 23),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'FINANCE DETAILS',
+                        style: textStyle(
+                          context,
+                          size: 12,
+                          weight: FontWeight.w800,
+                          color: p.ink,
+                        ),
+                      ),
+                      Text(
+                        widget.summary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textStyle(context, size: 10, color: p.secondary),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  expanded
+                      ? CupertinoIcons.chevron_up
+                      : CupertinoIcons.chevron_down,
+                  color: p.ink,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+          if (expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+              child: widget.child,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdventureDashboardLink extends StatelessWidget {
+  const _AdventureDashboardLink({
+    required this.title,
+    required this.subtitle,
+    required this.asset,
+    required this.onPressed,
+  });
+  final String title, subtitle, asset;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Press(
+      label: '$title. $subtitle',
+      onPressed: onPressed,
+      color: p.surface,
+      raised: true,
+      radius: 2,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      child: Row(
+        children: [
+          Image.asset(
+            asset,
+            width: 38,
+            height: 38,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.none,
+            excludeFromSemantics: true,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: textStyle(context, size: 14, weight: FontWeight.w800),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: textStyle(context, size: 11, color: p.secondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(CupertinoIcons.chevron_right, color: p.accent, size: 17),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdventureQuickCategories extends StatelessWidget {
+  const _AdventureQuickCategories({
+    required this.shortcuts,
+    required this.onManage,
+    required this.onAdd,
+  });
+  final List<Category> shortcuts;
+  final VoidCallback onManage;
+  final ValueChanged<String> onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Surface(
+      key: const ValueKey('adventure-quick-categories'),
+      padding: const EdgeInsets.all(12),
+      elevated: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'QUICK CATEGORIES',
+                  style: textStyle(context, size: 12, weight: FontWeight.w800),
+                ),
+              ),
+              Press(
+                label: 'Manage quick categories',
+                onPressed: onManage,
+                color: p.surface,
+                raised: true,
+                radius: 2,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Text(
+                  'Manage',
+                  style: textStyle(context, size: 11, color: p.accent),
+                ),
+              ),
+            ],
+          ),
+          if (shortcuts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Choose up to four categories in Manage for quick entry.',
+                style: textStyle(context, size: 12, color: p.secondary),
+              ),
+            )
+          else ...[
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final large = MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                final columns = large ? 2 : 4;
+                const spacing = 6.0;
+                final width =
+                    (constraints.maxWidth - spacing * (columns - 1)) / columns;
+                return Wrap(
+                  spacing: spacing,
+                  runSpacing: spacing,
+                  children: [
+                    for (final category in shortcuts)
+                      SizedBox(
+                        width: width,
+                        child: Press(
+                          key: ValueKey('quick-category-${category.id}'),
+                          label: 'Add ${category.name} entry',
+                          onPressed: () => onAdd(category.id),
+                          color: p.surface,
+                          raised: true,
+                          radius: 2,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 3,
+                            vertical: 8,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconTile(
+                                categoryIcon(category.icon),
+                                color: categoryColor(context, category.icon),
+                                size: 34,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                category.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: textStyle(
+                                  context,
+                                  size: 10,
+                                  weight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AdventureRecentEntries extends StatelessWidget {
+  const _AdventureRecentEntries({
+    required this.app,
+    required this.recent,
+    required this.spentToday,
+    required this.onHistory,
+  });
+  final AppController app;
+  final List<Entry> recent;
+  final int spentToday;
+  final VoidCallback onHistory;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Surface(
+      key: const ValueKey('adventure-recent-entries'),
+      padding: EdgeInsets.zero,
+      elevated: true,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 6, 4),
+            child: Row(
+              children: [
+                Image.asset(
+                  'assets/adventure/pixel_entry.png',
+                  width: 30,
+                  height: 30,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.none,
+                  excludeFromSemantics: true,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Recent entries',
+                    style: textStyle(
+                      context,
+                      size: 15,
+                      weight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Press(
+                  label: 'View all entries in History',
+                  onPressed: onHistory,
+                  color: p.surface,
+                  raised: true,
+                  radius: 2,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  child: Text(
+                    'See all',
+                    style: textStyle(context, size: 11, color: p.accent),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (recent.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(10),
+              child: QuietMessage(
+                'A fresh start',
+                'Add an entry to see your recent activity here.',
+                icon: CupertinoIcons.square_pencil,
+              ),
+            )
+          else ...[
+            const Rule(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Spent today',
+                      style: textStyle(context, size: 12, color: p.secondary),
+                    ),
+                  ),
+                  Text(
+                    money(spentToday),
+                    style: textStyle(
+                      context,
+                      size: 14,
+                      weight: FontWeight.w700,
+                      tabular: true,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (var index = 0; index < recent.length; index++) ...[
+              if (index > 0)
+                const Padding(
+                  padding: EdgeInsets.only(left: 64),
+                  child: Rule(),
+                ),
+              EntryRow(
+                entry: recent[index],
+                ledger: app.ledger,
+                onTap: () => pushPocket<void>(
+                  context,
+                  recent[index].loanId == null
+                      ? EntryDetailPage(app: app, id: recent[index].id)
+                      : LoanDetailPage(app: app, id: recent[index].loanId!),
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class BudgetBar extends StatelessWidget {
-  const BudgetBar({super.key, required this.spent, required this.budget});
+  const BudgetBar({
+    super.key,
+    required this.spent,
+    required this.budget,
+    this.trackColor,
+    this.fillColor,
+  });
   final int spent, budget;
+  final Color? trackColor, fillColor;
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -612,17 +1399,23 @@ class BudgetBar extends StatelessWidget {
     return Semantics(
       label: '${money(spent)} spent of ${money(budget)} budget',
       child: Container(
+        key: const ValueKey('budget-progress-track'),
+        width: double.infinity,
         height: 7,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: p.line,
+          color: trackColor ?? p.line,
           borderRadius: BorderRadius.circular(4),
         ),
         child: Align(
           alignment: Alignment.centerLeft,
           child: FractionallySizedBox(
             widthFactor: fraction,
-            child: Container(color: spent > budget ? p.danger : p.accent),
+            heightFactor: 1,
+            child: Container(
+              key: const ValueKey('budget-progress-fill'),
+              color: fillColor ?? (spent > budget ? p.danger : p.accent),
+            ),
           ),
         ),
       ),
@@ -708,6 +1501,14 @@ class HomeBalances extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 8, 8, 0),
             child: Row(
               children: [
+                if (p.adventure) ...[
+                  IconTile(
+                    CupertinoIcons.creditcard_fill,
+                    color: p.accent,
+                    size: 34,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Expanded(
                   child: Text(
                     'Total tracked balance',
@@ -1132,47 +1933,93 @@ class _HistoryPageState extends State<HistoryPage> {
       if (categoryFilter != null)
         l.category(categoryFilter!)?.name ?? categoryFilter!,
     ];
+    if (p.adventure) {
+      return _adventureJournal(
+        context,
+        ledger: l,
+        entries: entries,
+        pageEntries: pageEntries,
+        start: start,
+        shownPage: shownPage,
+        lastPage: lastPage,
+        appliedFilters: appliedFilters,
+      );
+    }
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 6, 24, 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'History',
-                      style: textStyle(
-                        context,
-                        size: 26,
-                        weight: FontWeight.w700,
+        if (p.adventure)
+          AdventureSectionHeader(
+            title: 'History',
+            eyebrow: 'TRANSACTION JOURNAL',
+            subtitle:
+                kind == null &&
+                    wallet == null &&
+                    dateFilter == null &&
+                    categoryFilter == null &&
+                    query.isEmpty
+                ? '${l.active.length} entries · newest first'
+                : '${entries.length} of ${l.active.length} entries match',
+            asset: 'assets/adventure/pixel_entry.png',
+            trailing: Press(
+              label: 'Add entry from History',
+              onPressed: () => openEntry(context, widget.app),
+              color: p.ink,
+              raised: true,
+              radius: 2,
+              padding: const EdgeInsets.all(8),
+              child: Icon(CupertinoIcons.plus, color: p.pixelGold, size: 21),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 6, 24, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'History',
+                              style: textStyle(
+                                context,
+                                size: 26,
+                                weight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              kind == null &&
+                                      wallet == null &&
+                                      dateFilter == null &&
+                                      categoryFilter == null &&
+                                      query.isEmpty
+                                  ? '${l.active.length} entries · recent first'
+                                  : '${entries.length} of ${l.active.length} entries match',
+                              style: textStyle(
+                                context,
+                                size: 12,
+                                color: p.secondary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Text(
-                      kind == null &&
-                              wallet == null &&
-                              dateFilter == null &&
-                              categoryFilter == null &&
-                              query.isEmpty
-                          ? '${l.active.length} entries · recent first'
-                          : '${entries.length} of ${l.active.length} entries match',
-                      style: textStyle(context, size: 12, color: p.secondary),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Press(
-                label: 'Add entry from History',
-                onPressed: () => openEntry(context, widget.app),
-                padding: const EdgeInsets.all(10),
-                child: Icon(CupertinoIcons.plus, color: p.accent, size: 22),
-              ),
-            ],
+                Press(
+                  label: 'Add entry from History',
+                  onPressed: () => openEntry(context, widget.app),
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(CupertinoIcons.plus, color: p.accent, size: 22),
+                ),
+              ],
+            ),
           ),
-        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: CupertinoSearchTextField(
@@ -1386,6 +2233,294 @@ class _HistoryPageState extends State<HistoryPage> {
       ],
     );
   }
+
+  Widget _adventureJournal(
+    BuildContext context, {
+    required Ledger ledger,
+    required List<Entry> entries,
+    required List<Entry> pageEntries,
+    required int start,
+    required int shownPage,
+    required int lastPage,
+    required List<String> appliedFilters,
+  }) {
+    final p = Palette.of(context);
+    final groups = <(String, List<Entry>)>[];
+    for (final entry in pageEntries) {
+      if (groups.isEmpty || groups.last.$1 != entry.date) {
+        groups.add((entry.date, <Entry>[entry]));
+      } else {
+        groups.last.$2.add(entry);
+      }
+    }
+    return Column(
+      key: const ValueKey('adventure-journal'),
+      children: [
+        AdventureSectionHeader(
+          title: 'History',
+          eyebrow: 'JOURNAL',
+          subtitle: appliedFilters.isEmpty
+              ? '${ledger.active.length} entries · grouped by date'
+              : '${entries.length} of ${ledger.active.length} entries match',
+          asset: 'assets/adventure/pixel_entry.png',
+          trailing: Press(
+            label: 'Add entry from History',
+            onPressed: () => openEntry(context, widget.app),
+            color: p.accent,
+            padding: const EdgeInsets.all(8),
+            child: Icon(CupertinoIcons.add, color: p.surface, size: 20),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+          child: PixelFrame(
+            fillColor: p.surface,
+            child: CupertinoSearchTextField(
+              placeholder: 'Find a note, wallet or amount',
+              placeholderStyle: textStyle(
+                context,
+                size: 14,
+                color: p.secondary,
+              ),
+              style: textStyle(context, size: 15),
+              decoration: BoxDecoration(color: p.surface),
+              itemColor: p.accent,
+              onChanged: (value) => changeFilter(() => query = value),
+            ),
+          ),
+        ),
+        SizedBox(
+          height: 46,
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            scrollDirection: Axis.horizontal,
+            children: [
+              for (final choice in [null, ...EntryKind.values])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: PixelFrame(
+                    fillColor: kind == choice ? p.accent : p.surface,
+                    child: Press(
+                      label:
+                          '${choice == null ? 'All' : switch (choice) {
+                                  EntryKind.expense => 'Expenses',
+                                  EntryKind.income => 'Income',
+                                  EntryKind.transfer => 'Transfers',
+                                }} filter${kind == choice ? ', selected' : ''}',
+                      onPressed: () => changeFilter(() => kind = choice),
+                      color: kind == choice ? p.accent : p.surface,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 3,
+                      ),
+                      child: Text(
+                        choice == null
+                            ? 'All'
+                            : switch (choice) {
+                                EntryKind.expense => 'Expenses',
+                                EntryKind.income => 'Income',
+                                EntryKind.transfer => 'Transfers',
+                              },
+                        style: textStyle(
+                          context,
+                          size: 12,
+                          weight: FontWeight.w700,
+                          color: kind == choice ? p.surface : p.ink,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: PixelFrame(
+                  fillColor: p.surface,
+                  child: Press(
+                    key: const ValueKey('history-filters'),
+                    label: appliedFilters.isEmpty
+                        ? 'Filter by date, category or wallet'
+                        : 'Filters: ${appliedFilters.join(', ')}',
+                    onPressed: chooseHistoryFilters,
+                    color: p.surface,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 3,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          CupertinoIcons.slider_horizontal_3,
+                          size: 16,
+                          color: p.accent,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          appliedFilters.isEmpty
+                              ? 'Filter'
+                              : appliedFilters.join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textStyle(
+                            context,
+                            size: 12,
+                            weight: FontWeight.w600,
+                            color: p.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: groups.isEmpty
+              ? SingleChildScrollView(
+                  child: QuietMessage(
+                    ledger.active.isEmpty
+                        ? 'The journal is empty'
+                        : 'No matching entries',
+                    ledger.active.isEmpty
+                        ? 'Recorded entries will be collected here by date.'
+                        : 'Change a filter or search another term.',
+                    icon: CupertinoIcons.book,
+                    action: ledger.active.isEmpty
+                        ? PrimaryButton(
+                            'Record an entry',
+                            onPressed: () => openEntry(context, widget.app),
+                          )
+                        : null,
+                  ),
+                )
+              : ListView.builder(
+                  controller: historyScroll,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  itemCount: groups.length,
+                  itemBuilder: (context, index) {
+                    final group = groups[index];
+                    final date = group.$1;
+                    final today = date == dayKey(widget.app.clock());
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: PixelFrame(
+                        fillColor: p.surface,
+                        padding: const EdgeInsets.all(3),
+                        child: Column(
+                          children: [
+                            Container(
+                              color: p.ink,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 7,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    CupertinoIcons.calendar,
+                                    color: p.pixelGold,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 7),
+                                  Expanded(
+                                    child: Text(
+                                      today ? 'TODAY' : shortDate(date),
+                                      style: textStyle(
+                                        context,
+                                        size: 12,
+                                        weight: FontWeight.w800,
+                                        color: p.surface,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${group.$2.length} ${group.$2.length == 1 ? 'entry' : 'entries'}',
+                                    style: textStyle(
+                                      context,
+                                      size: 11,
+                                      color: p.pixelGold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            for (var i = 0; i < group.$2.length; i++) ...[
+                              EntryRow(
+                                entry: group.$2[i],
+                                ledger: ledger,
+                                onTap: () {
+                                  final entry = group.$2[i];
+                                  pushPocket<void>(
+                                    context,
+                                    entry.loanId == null
+                                        ? EntryDetailPage(
+                                            app: widget.app,
+                                            id: entry.id,
+                                          )
+                                        : LoanDetailPage(
+                                            app: widget.app,
+                                            id: entry.loanId!,
+                                          ),
+                                  );
+                                },
+                              ),
+                              if (i < group.$2.length - 1)
+                                const Padding(
+                                  padding: EdgeInsets.only(left: 70),
+                                  child: Rule(),
+                                ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        if (entries.length > pageSize)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              children: [
+                Press(
+                  key: const ValueKey('history-previous-page'),
+                  label: 'Previous history page',
+                  onPressed: shownPage == 0
+                      ? null
+                      : () => changePage(shownPage - 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  child: const Text('Previous'),
+                ),
+                Text(
+                  '${start + 1}–${start + pageEntries.length} of ${entries.length}',
+                  key: const ValueKey('history-page-range'),
+                  style: textStyle(context, size: 12, color: p.secondary),
+                ),
+                Press(
+                  key: const ValueKey('history-next-page'),
+                  label: 'Next history page',
+                  onPressed: shownPage == lastPage
+                      ? null
+                      : () => changePage(shownPage + 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  child: const Text('Next'),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class PlanPage extends StatefulWidget {
@@ -1401,6 +2536,7 @@ class _PlanPageState extends State<PlanPage> {
     widget.app.clock().month,
   );
   String? error;
+  bool breakdownExpanded = false;
   Future<void> edit() async {
     final existing = widget.app.ledger.budgets[monthKey(month)] ?? 0;
     final value = await textPrompt(
@@ -1441,11 +2577,32 @@ class _PlanPageState extends State<PlanPage> {
         ..sort((a, b) => b.$2.compareTo(a.$2)),
       (item) => item.$1,
     );
+    if (p.adventure) {
+      return _adventurePlan(
+        context,
+        p: p,
+        key: key,
+        spent: spent,
+        budget: budget,
+        categories: categories,
+      );
+    }
     return ListView(
       key: const ValueKey('plan-scroll'),
       padding: EdgeInsets.zero,
       children: [
-        const PageHeading('Plan', subtitle: 'A simple limit. A clearer month.'),
+        if (p.adventure)
+          AdventureSectionHeader(
+            title: 'Plan',
+            eyebrow: 'MONTHLY BUDGET',
+            subtitle: 'Set a clear limit and follow bill progress.',
+            asset: 'assets/adventure/pixel_bills.png',
+          )
+        else
+          const PageHeading(
+            'Plan',
+            subtitle: 'A simple limit. A clearer month.',
+          ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
@@ -1538,6 +2695,10 @@ class _PlanPageState extends State<PlanPage> {
                   ],
                 ),
               ),
+              if (p.adventure) ...[
+                const SizedBox(height: 14),
+                AdventureBillsProgress(ledger: l),
+              ],
               ErrorLine(error),
               const SizedBox(height: 24),
               Text(
@@ -1582,6 +2743,306 @@ class _PlanPageState extends State<PlanPage> {
               ),
               const SizedBox(height: 28),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _adventurePlan(
+    BuildContext context, {
+    required Palette p,
+    required String key,
+    required int spent,
+    required int budget,
+    required List<(Category, int)> categories,
+  }) {
+    final ledger = widget.app.ledger;
+    final monthLabel = '${monthNames[month.month - 1]} ${month.year}';
+    final remaining = budget - spent;
+    return ListView(
+      key: const ValueKey('adventure-plan-dashboard'),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 18),
+      children: [
+        AdventureSectionHeader(
+          title: 'Plan',
+          eyebrow: 'MONTHLY GOAL BOARD',
+          subtitle: 'Budget target and fixed-term bill progress',
+          asset: 'assets/adventure/pixel_bills.png',
+        ),
+        PixelFrame(
+          fillColor: p.ink,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: Row(
+            children: [
+              Press(
+                label: 'Previous month',
+                onPressed: month.year > 1900 || month.month > 1
+                    ? () => setState(
+                        () => month = DateTime(month.year, month.month - 1),
+                      )
+                    : null,
+                color: p.ink,
+                padding: const EdgeInsets.all(10),
+                child: Icon(CupertinoIcons.chevron_left, color: p.pixelGold),
+              ),
+              Expanded(
+                child: Text(
+                  monthLabel,
+                  textAlign: TextAlign.center,
+                  style: textStyle(
+                    context,
+                    size: 16,
+                    weight: FontWeight.w800,
+                    color: p.surface,
+                  ),
+                ),
+              ),
+              Press(
+                label: 'Next month',
+                onPressed: month.year < 2200 || month.month < 12
+                    ? () => setState(
+                        () => month = DateTime(month.year, month.month + 1),
+                      )
+                    : null,
+                color: p.ink,
+                padding: const EdgeInsets.all(10),
+                child: Icon(CupertinoIcons.chevron_right, color: p.pixelGold),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        PixelFrame(
+          key: const ValueKey('plan-spending-card'),
+          fillColor: p.ink,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SPENT THIS MONTH',
+                          style: textStyle(
+                            context,
+                            size: 10,
+                            weight: FontWeight.w800,
+                            color: p.pixelGold,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            money(spent),
+                            style: textStyle(
+                              context,
+                              size: 31,
+                              weight: FontWeight.w800,
+                              color: p.surface,
+                              tabular: true,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Image.asset(
+                    'assets/adventure/pixel_bills.png',
+                    width: 54,
+                    height: 54,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.none,
+                    excludeFromSemantics: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      budget == 0
+                          ? 'NO LIMIT SET'
+                          : remaining >= 0
+                          ? '${money(remaining)} LEFT OF ${money(budget)}'
+                          : '${money(-remaining)} OVER ${money(budget)}',
+                      style: textStyle(
+                        context,
+                        size: 11,
+                        weight: FontWeight.w800,
+                        color: remaining < 0 ? p.danger : p.surface,
+                      ),
+                    ),
+                  ),
+                  Press(
+                    key: const ValueKey('adventure-edit-budget'),
+                    label: budget > 0
+                        ? 'Edit monthly budget'
+                        : 'Set monthly budget',
+                    onPressed: widget.app.busy ? null : edit,
+                    color: p.pixelGold,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 7,
+                    ),
+                    child: Text(
+                      budget > 0 ? 'EDIT' : 'SET GOAL',
+                      style: textStyle(
+                        context,
+                        size: 10,
+                        weight: FontWeight.w900,
+                        color: p.ink,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (budget > 0) ...[
+                const SizedBox(height: 11),
+                BudgetBar(
+                  spent: spent,
+                  budget: budget,
+                  trackColor: p.secondary.withValues(alpha: .42),
+                  fillColor: spent > budget ? p.danger : p.pixelGold,
+                ),
+              ],
+              if (error != null) ...[
+                const SizedBox(height: 7),
+                ErrorLine(error),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        PixelFrame(
+          fillColor: p.surface,
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'FIXED-TERM BILLS',
+                      style: textStyle(
+                        context,
+                        size: 12,
+                        weight: FontWeight.w900,
+                        color: p.ink,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${ledger.bills.where((bill) => bill.paymentCount != null).length} TRACKED',
+                    style: textStyle(
+                      context,
+                      size: 9,
+                      weight: FontWeight.w800,
+                      color: p.secondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              AdventureBillsProgress(ledger: ledger),
+              if (!ledger.bills.any((bill) => bill.paymentCount != null))
+                Padding(
+                  padding: const EdgeInsets.only(top: 7),
+                  child: Text(
+                    'Fixed-term payment progress will appear here.',
+                    style: textStyle(context, size: 12, color: p.secondary),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        PixelFrame(
+          key: const ValueKey('plan-category-card'),
+          fillColor: p.surface,
+          child: Column(
+            children: [
+              Press(
+                key: const ValueKey('adventure-plan-breakdown-toggle'),
+                label: breakdownExpanded
+                    ? 'Hide expense breakdown'
+                    : 'Show expense breakdown',
+                onPressed: () =>
+                    setState(() => breakdownExpanded = !breakdownExpanded),
+                color: p.surface,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 9,
+                ),
+                child: Row(
+                  children: [
+                    Icon(CupertinoIcons.chart_pie, color: p.accent, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Expense breakdown',
+                        style: textStyle(
+                          context,
+                          size: 14,
+                          weight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${categories.length} categories',
+                      style: textStyle(context, size: 11, color: p.secondary),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      breakdownExpanded
+                          ? CupertinoIcons.chevron_up
+                          : CupertinoIcons.chevron_down,
+                      size: 15,
+                      color: p.accent,
+                    ),
+                  ],
+                ),
+              ),
+              if (breakdownExpanded)
+                if (categories.isEmpty)
+                  const QuietMessage(
+                    'No expenses yet',
+                    'Recorded expenses will appear by category.',
+                    icon: CupertinoIcons.chart_bar,
+                  )
+                else
+                  for (var i = 0; i < categories.length; i++)
+                    GroupRow(
+                      categories[i].$1.name,
+                      icon: categoryIcon(categories[i].$1.icon),
+                      trailing: Text(
+                        money(categories[i].$2),
+                        style: textStyle(
+                          context,
+                          size: 14,
+                          weight: FontWeight.w700,
+                          tabular: true,
+                        ),
+                      ),
+                      last: i == categories.length - 1,
+                    ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 9, 4, 0),
+          child: Text(
+            'Only expenses count toward the goal. Income and transfers stay separate.',
+            style: textStyle(context, size: 11, color: p.surface),
           ),
         ),
       ],
