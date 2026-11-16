@@ -13,6 +13,7 @@ part 'allowance_page.dart';
 part 'bills_balance.dart';
 part 'style_page.dart';
 part 'widget_settings.dart';
+part 'loan_pages.dart';
 
 Future<void> openEntry(
   BuildContext context,
@@ -20,7 +21,7 @@ Future<void> openEntry(
   String? categoryId,
   Entry? editing,
 }) async {
-  if (app.busy) return;
+  if (app.busy || app.repeatOpening) return;
   if (editing != null &&
       app.draft?.dirty == true &&
       app.draft?.editingId != editing.id) {
@@ -40,6 +41,39 @@ Future<void> openEntry(
   }
   if (context.mounted) {
     await pushPocket<void>(context, EntryPage(controller: app), modal: true);
+    app.publish();
+  }
+}
+
+Future<void> openRepeatEntry(
+  BuildContext context,
+  AppController app, {
+  required String sourceId,
+}) async {
+  if (app.busy || app.repeatOpening || app.entryVisible) return;
+  app.repeatOpening = true;
+  app.publish();
+  try {
+    if (app.repeatableEntry(sourceId) == null) return;
+    if (app.draft?.dirty == true) {
+      final discard = await confirm(
+        context,
+        title: 'An entry is unfinished',
+        message: 'Discard it and repeat this entry?',
+        action: 'Discard entry',
+        destructive: true,
+      );
+      if (!discard || !context.mounted) return;
+      if (app.repeatableEntry(sourceId) == null) return;
+      await app.discardDraft();
+      if (!context.mounted) return;
+    }
+    if (app.busy || app.entryVisible || !context.mounted) return;
+    if (!app.startRepeatDraft(sourceId)) return;
+    await pushPocket<void>(context, EntryPage(controller: app), modal: true);
+    app.publish();
+  } finally {
+    app.repeatOpening = false;
     app.publish();
   }
 }
@@ -189,6 +223,7 @@ class _HomeShellState extends State<HomeShell> {
                         ),
                         HistoryPage(app: widget.app),
                         PlanPage(app: widget.app),
+                        LoansPage(app: widget.app),
                       ],
                     ),
                   ),
@@ -205,13 +240,13 @@ class _HomeShellState extends State<HomeShell> {
                     ),
                     child: Row(
                       children: [
-                        for (var i = 0; i < 3; i++)
+                        for (var i = 0; i < 4; i++)
                           Expanded(
                             child: Press(
                               onPressed: () => setState(() => tab = i),
                               color: tab == i ? p.tint : null,
                               label:
-                                  '${['Today', 'History', 'Plan'][i]} tab${tab == i ? ', selected' : ''}',
+                                  '${['Today', 'History', 'Plan', 'Loans'][i]} tab${tab == i ? ', selected' : ''}',
                               padding: const EdgeInsets.symmetric(
                                 vertical: 8,
                                 horizontal: 4,
@@ -225,13 +260,14 @@ class _HomeShellState extends State<HomeShell> {
                                       CupertinoIcons.house,
                                       CupertinoIcons.list_bullet,
                                       CupertinoIcons.chart_bar,
+                                      CupertinoIcons.person_2,
                                     ][i],
                                     color: tab == i ? p.accent : p.secondary,
                                     size: 23,
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    ['Today', 'History', 'Plan'][i],
+                                    ['Today', 'History', 'Plan', 'Loans'][i],
                                     style: textStyle(
                                       context,
                                       size: 11,
@@ -497,7 +533,12 @@ class TodayPage extends StatelessWidget {
                           ledger: l,
                           onTap: () => pushPocket<void>(
                             context,
-                            EntryDetailPage(app: app, id: recent[i].id),
+                            recent[i].loanId == null
+                                ? EntryDetailPage(app: app, id: recent[i].id)
+                                : LoanDetailPage(
+                                    app: app,
+                                    id: recent[i].loanId!,
+                                  ),
                           ),
                         ),
                         if (i < recent.length - 1)
@@ -1075,7 +1116,7 @@ class _HistoryPageState extends State<HistoryPage> {
               (wallet == null || wallet == e.wallet || wallet == e.toWallet) &&
               (dateFilter == null || dateFilter == e.date) &&
               (categoryFilter == null || categoryFilter == e.categoryId) &&
-              ('${e.adjustment != null ? 'Balance adjustment' : l.category(e.categoryId)?.name ?? 'Transfer'} ${e.note} ${money(e.centavos)} ${moneyInput(e.centavos)} ${l.wallet(e.wallet)!.label} ${l.wallet(e.toWallet)?.label ?? ''}'
+              ('${e.loanId == null ? '' : l.loan(e.loanId!)?.borrower ?? ''} ${e.adjustment != null ? 'Balance adjustment' : l.category(e.categoryId)?.name ?? 'Transfer'} ${e.note} ${money(e.centavos)} ${moneyInput(e.centavos)} ${l.wallet(e.wallet)!.label} ${l.wallet(e.toWallet)?.label ?? ''}'
                   .toLowerCase()
                   .contains(query.toLowerCase())),
         )
@@ -1277,7 +1318,15 @@ class _HistoryPageState extends State<HistoryPage> {
                                 ledger: l,
                                 onTap: () => pushPocket<void>(
                                   context,
-                                  EntryDetailPage(app: widget.app, id: e.id),
+                                  e.loanId == null
+                                      ? EntryDetailPage(
+                                          app: widget.app,
+                                          id: e.id,
+                                        )
+                                      : LoanDetailPage(
+                                          app: widget.app,
+                                          id: e.loanId!,
+                                        ),
                                 ),
                               ),
                               if (i < pageEntries.length - 1 &&
@@ -1664,10 +1713,14 @@ class EntryDetailPage extends StatelessWidget {
                         : e.kind == EntryKind.transfer
                         ? 'From'
                         : entryAction(e.kind),
-                    app.ledger.wallet(e.wallet)!.label,
+                    app.ledger.wallet(e.wallet)?.label ?? 'Unavailable wallet',
                   ),
                   if (e.toWallet != null)
-                    EntryFact('To', app.ledger.wallet(e.toWallet)!.label),
+                    EntryFact(
+                      'To',
+                      app.ledger.wallet(e.toWallet)?.label ??
+                          'Unavailable wallet',
+                    ),
                   if (e.occurrenceDate != null)
                     EntryFact(
                       'Allowance occurrence',
@@ -1694,7 +1747,41 @@ class EntryDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
-            if (e.adjustment == null)
+            if (e.adjustment == null && e.kind != EntryKind.transfer)
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked =
+                      constraints.maxWidth < 320 ||
+                      MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                  final edit = PrimaryButton(
+                    'Edit entry',
+                    icon: CupertinoIcons.pencil,
+                    onPressed: app.busy
+                        ? null
+                        : () => openEntry(context, app, editing: e),
+                  );
+                  final repeat = SecondaryButton(
+                    'Repeat entry',
+                    key: const ValueKey('repeat-entry'),
+                    icon: CupertinoIcons.repeat,
+                    onPressed: app.busy || app.repeatOpening
+                        ? null
+                        : () => openRepeatEntry(context, app, sourceId: e.id),
+                  );
+                  return stacked
+                      ? Column(
+                          children: [edit, const SizedBox(height: 10), repeat],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(child: edit),
+                            const SizedBox(width: 10),
+                            Expanded(child: repeat),
+                          ],
+                        );
+                },
+              )
+            else if (e.adjustment == null)
               PrimaryButton(
                 'Edit entry',
                 icon: CupertinoIcons.pencil,
@@ -2295,6 +2382,7 @@ class _SettingsPageState extends State<SettingsPage>
   bool reminderBusy = false;
   ReminderState reminder = const ReminderState();
   String? reminderError;
+  String? installedVersion;
   int reminderRead = 0;
   String? error;
   @override
@@ -2302,6 +2390,7 @@ class _SettingsPageState extends State<SettingsPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     loadReminder();
+    loadAppVersion();
   }
 
   @override
@@ -2338,6 +2427,20 @@ class _SettingsPageState extends State<SettingsPage>
               'Reminder settings could not load. Reopen Settings to retry.',
         );
       }
+    }
+  }
+
+  Future<void> loadAppVersion() async {
+    final bridge = widget.app.bridge;
+    if (bridge == null) return;
+    try {
+      final version = await bridge.appVersion();
+      final normalized = version?.trim();
+      if (mounted && normalized != null && normalized.isNotEmpty) {
+        setState(() => installedVersion = normalized);
+      }
+    } catch (_) {
+      // Keep the app-name-only label when package metadata is unavailable.
     }
   }
 
@@ -2851,7 +2954,7 @@ class _SettingsPageState extends State<SettingsPage>
             ),
             const SizedBox(height: 18),
             Text(
-              'Ponpon 0.2.15 · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
+              'Ponpon${installedVersion == null ? '' : ' $installedVersion'} · Budget & Expenses\nPHP · Offline · Manual wallet tracking',
               style: textStyle(context, size: 12, color: p.secondary),
             ),
             const SizedBox(height: 24),
@@ -3124,8 +3227,11 @@ class DeletedPage extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: app,
     builder: (context, _) {
-      final deleted = app.ledger.entries.where((e) => e.deleted).toList()
-        ..sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
+      final deleted =
+          app.ledger.entries
+              .where((e) => e.deleted && e.loanId == null)
+              .toList()
+            ..sort((a, b) => b.deletedAt!.compareTo(a.deletedAt!));
       return PocketPage(
         'Recently deleted',
         child: deleted.isEmpty

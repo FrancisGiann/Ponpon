@@ -148,3 +148,178 @@ extension BillsAndBalance on AppController {
     );
   }
 }
+
+extension Loans on AppController {
+  Future<bool> addLoan({
+    required String borrower,
+    required int principalCentavos,
+    required String date,
+    String? dueDate,
+    String note = '',
+    required bool alreadyExisting,
+    int alreadyRepaidCentavos = 0,
+    Wallet? fundingWallet,
+  }) {
+    final now = clock().millisecondsSinceEpoch;
+    final id = newId();
+    final activityId = newId();
+    return commit(
+      (l) {
+        if (!alreadyExisting && fundingWallet == null) {
+          throw const LedgerException('Choose a wallet to fund this loan.');
+        }
+        final loan = Loan(
+          id: id,
+          borrower: borrower.trim(),
+          principalCentavos: principalCentavos,
+          date: date,
+          dueDate: dueDate,
+          note: note.trim(),
+          funded: !alreadyExisting,
+          alreadyRepaidCentavos: alreadyExisting ? alreadyRepaidCentavos : 0,
+          createdAt: now,
+          updatedAt: now,
+        );
+        final issue = alreadyExisting
+            ? null
+            : Entry(
+                id: activityId,
+                kind: EntryKind.expense,
+                centavos: principalCentavos,
+                date: date,
+                wallet: fundingWallet!,
+                note: 'Loan to ${borrower.trim()}',
+                createdAt: now,
+                updatedAt: now,
+                loanId: id,
+                loanAction: LoanAction.issued,
+              );
+        return l.saveLoan(loan, issuance: issue);
+      },
+      message: 'Loan added',
+      undo: true,
+    );
+  }
+
+  Future<bool> updateLoan(Loan reviewed, Loan value) => commit(
+    (l) {
+      final old = l.loan(value.id);
+      if (old == null ||
+          old.deleted ||
+          !sameLoan(old, reviewed) ||
+          old.funded &&
+              (value.principalCentavos != old.principalCentavos ||
+                  value.date != old.date)) {
+        throw const LedgerException(
+          'The original amount and date are fixed for a funded loan.',
+        );
+      }
+      return l.saveLoan(
+        value.copy(updatedAt: clock().millisecondsSinceEpoch),
+        editing: true,
+      );
+    },
+    message: 'Loan updated',
+    undo: true,
+  );
+
+  Future<bool> recordLoanRepayment({
+    required Loan reviewed,
+    required int centavos,
+    required String date,
+    required Wallet wallet,
+    String note = '',
+  }) async {
+    final now = clock().millisecondsSinceEpoch;
+    final repayment = Entry(
+      id: newId(),
+      kind: EntryKind.income,
+      centavos: centavos,
+      date: date,
+      wallet: wallet,
+      note: note.trim(),
+      createdAt: now,
+      updatedAt: now,
+      loanId: reviewed.id,
+      loanAction: LoanAction.repayment,
+    );
+    final result = await commit(
+      (l) => l.putLoanRepayment(reviewed, repayment),
+      message: 'Repayment recorded',
+      undo: true,
+    );
+    if (result && ledger.loan(reviewed.id)?.completed(ledger) == true) {
+      celebratedLoanId = reviewed.id;
+      publish();
+    }
+    return result;
+  }
+
+  Future<bool> correctLoanRepayment({
+    required Entry previous,
+    required int centavos,
+    required String date,
+    required Wallet wallet,
+    String note = '',
+  }) => commit(
+    (l) {
+      final loan = l.loan(previous.loanId ?? '');
+      if (!sameEntry(l.entry(previous.id), previous) ||
+          previous.deleted ||
+          loan == null ||
+          loan.deleted ||
+          previous.loanAction != LoanAction.repayment) {
+        throw const LedgerException('This repayment is no longer available.');
+      }
+      return l.putLoanRepayment(
+        loan,
+        Entry(
+          id: previous.id,
+          kind: EntryKind.income,
+          centavos: centavos,
+          date: date,
+          wallet: wallet,
+          note: note.trim(),
+          createdAt: previous.createdAt,
+          updatedAt: max(clock().millisecondsSinceEpoch, previous.updatedAt),
+          loanId: loan.id,
+          loanAction: LoanAction.repayment,
+        ),
+      );
+    },
+    message: 'Repayment corrected',
+    undo: true,
+  );
+
+  Future<bool> removeLoan(String id) => commit(
+    (l) => l.removeLoan(id, clock().millisecondsSinceEpoch),
+    message: 'Loan removed',
+    undo: true,
+  );
+
+  Future<bool> removeLoanRepayment(Entry entry) => commit(
+    (l) {
+      if (!sameEntry(l.entry(entry.id), entry)) {
+        throw const LedgerException(
+          'This repayment changed. Review the loan activity.',
+        );
+      }
+      return l.deleteLoanRepayment(entry.id, clock().millisecondsSinceEpoch);
+    },
+    message: 'Repayment removed',
+    undo: true,
+  );
+
+  Future<bool> restoreLoanRepayment(Entry entry) => commit(
+    (l) {
+      if (!sameEntry(l.entry(entry.id), entry)) {
+        throw const LedgerException(
+          'This repayment changed. Review the loan activity.',
+        );
+      }
+      return l.restoreLoanRepayment(entry.id, clock().millisecondsSinceEpoch);
+    },
+    message: 'Repayment restored',
+    undo: true,
+  );
+}

@@ -273,6 +273,9 @@ class SmallWidgetTest {
             "powderBlue" to android.graphics.Color.parseColor("#EFF6FC"),
             "notebook" to android.graphics.Color.parseColor("#F6F1E5"),
             "midnight" to android.graphics.Color.parseColor("#0C1420"),
+            "moss" to android.graphics.Color.parseColor("#EEF2E8"),
+            "clay" to android.graphics.Color.parseColor("#F7EEE8"),
+            "graphite" to android.graphics.Color.parseColor("#111315"),
         )
         for ((styleName, backgroundColor) in expected) {
             prefs.edit().clear().commit()
@@ -319,6 +322,9 @@ class SmallWidgetTest {
             "powderBlue" to "light", "powderBlue" to "dark",
             "notebook" to "light", "notebook" to "dark",
             "midnight" to "light", "midnight" to "dark",
+            "moss" to "light", "moss" to "dark",
+            "clay" to "light", "clay" to "dark",
+            "graphite" to "light", "graphite" to "dark",
         )
         try {
             for (scale in listOf(1f, 1.5f)) {
@@ -336,7 +342,7 @@ class SmallWidgetTest {
                         .commit()
                     val tokens = WidgetStyle.from(context, style, theme)
                     assertEquals(style, tokens.name)
-                    assertEquals(style == "midnight" || theme == "dark", tokens.dark)
+                    assertEquals(style == "midnight" || style == "graphite" || theme == "dark", tokens.dark)
 
                     val compact = QuickEntryWidget.views(context, 290, compact = true)
                         .apply(context, FrameLayout(context))

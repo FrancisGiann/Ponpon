@@ -136,6 +136,42 @@ class _EntryPageState extends State<EntryPage> {
     );
   }
 
+  Future<void> chooseTransferWallet({required bool source}) async {
+    final wallet = await chooseWallet(
+      context,
+      selectableWallets,
+      title: source ? 'Transfer from' : 'Transfer to',
+    );
+    if (wallet == null || !mounted) return;
+    change(() {
+      if (source) {
+        draft.from = wallet;
+      } else {
+        draft.to = wallet;
+      }
+    });
+  }
+
+  Future<void> chooseRepeatWallet() async {
+    final wallet = await chooseWallet(
+      context,
+      app.ledger.availableWallets,
+      title: entryAction(draft.kind),
+    );
+    if (wallet == null || !mounted) return;
+    change(() {
+      draft.preferredWallet = app.ledger.availableWallets
+          .where((candidate) => candidate == wallet)
+          .firstOrNull;
+    });
+  }
+
+  void reverseTransfer() => change(() {
+    final from = draft.from;
+    draft.from = draft.to;
+    draft.to = from;
+  });
+
   Future<void> chooseCategory() async {
     final categories = app.ledger.categoriesFor(draft.kind);
     final chosen = await showPocketSheet<String>(
@@ -170,7 +206,12 @@ class _EntryPageState extends State<EntryPage> {
         ),
       ),
     );
-    if (chosen != null && mounted) change(() => draft.categoryId = chosen);
+    if (chosen != null && mounted) {
+      change(() {
+        draft.categoryId = chosen;
+        if (draft.repeatEntry) draft.repeatCategoryExplicit = true;
+      });
+    }
   }
 
   Future<void> note() async {
@@ -213,6 +254,11 @@ class _EntryPageState extends State<EntryPage> {
             )
           : null;
       final categories = app.ledger.categoriesFor(draft.kind);
+      final repeatWallet = draft.repeatEntry && !isTransfer
+          ? app.ledger.availableWallets
+                .where((wallet) => wallet == draft.preferredWallet)
+                .firstOrNull
+          : null;
       final quickCategories = categories
           .take(draft.kind == EntryKind.income ? 5 : 4)
           .toList();
@@ -223,7 +269,7 @@ class _EntryPageState extends State<EntryPage> {
         if (quickCategories.length == 4) quickCategories.removeLast();
         quickCategories.add(chosen);
       }
-      final isToday = draft.date == dayKey(app.clock());
+      final isToday = draft.date == dayKey(app.clock().toLocal());
       return CupertinoPageScaffold(
         backgroundColor: p.background,
         child: SafeArea(
@@ -332,18 +378,23 @@ class _EntryPageState extends State<EntryPage> {
                           ),
                         ),
                       ),
-                      Expanded(
+                      Flexible(
+                        fit: isTransfer ? FlexFit.loose : FlexFit.tight,
                         child: LayoutBuilder(
                           builder: (context, amountBounds) => SingleChildScrollView(
                             padding: const EdgeInsets.symmetric(horizontal: 24),
                             child: ConstrainedBox(
                               constraints: BoxConstraints(
-                                minHeight: amountBounds.maxHeight,
+                                minHeight: isTransfer
+                                    ? 0
+                                    : amountBounds.maxHeight,
                               ),
                               child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisAlignment: isTransfer
+                                    ? MainAxisAlignment.start
+                                    : MainAxisAlignment.center,
                                 children: [
-                                  const SizedBox(height: 8),
+                                  SizedBox(height: isTransfer ? 1 : 8),
                                   Semantics(
                                     label:
                                         'Amount in Philippine pesos, ${draft.amount.isEmpty ? 'zero' : draft.amount}',
@@ -354,7 +405,7 @@ class _EntryPageState extends State<EntryPage> {
                                             ? (amountBounds.maxHeight - 58)
                                                   .clamp(24.0, 58.0)
                                             : isTransfer
-                                            ? 54
+                                            ? 44
                                             : 96,
                                         child: Row(
                                           mainAxisAlignment:
@@ -403,7 +454,7 @@ class _EntryPageState extends State<EntryPage> {
                                         onPressed: app.busy ? null : chooseDate,
                                         padding: EdgeInsets.symmetric(
                                           horizontal: 14,
-                                          vertical: isTransfer ? 6 : 10,
+                                          vertical: isTransfer ? 4 : 10,
                                         ),
                                         label:
                                             'Edit date, ${shortDate(draft.date)}',
@@ -436,10 +487,15 @@ class _EntryPageState extends State<EntryPage> {
                                     ],
                                   ),
                                   if (transferPreview != null) ...[
-                                    const SizedBox(height: 6),
+                                    const SizedBox(height: 1),
                                     _TransferBalances(
                                       preview: transferPreview,
                                       disabled: submitting || app.busy,
+                                      onChooseSource: () =>
+                                          chooseTransferWallet(source: true),
+                                      onChooseDestination: () =>
+                                          chooseTransferWallet(source: false),
+                                      onReverse: reverseTransfer,
                                       onTransferAll: () => change(() {
                                         draft.amount = moneyInput(
                                           transferPreview.transferAllCentavos,
@@ -483,6 +539,22 @@ class _EntryPageState extends State<EntryPage> {
                                       ),
                                     ),
                                   ErrorLine(app.storageError ?? app.draftError),
+                                  if (draft.repeatEntry &&
+                                      !isTransfer &&
+                                      chosen == null)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4,
+                                      ),
+                                      child: Text(
+                                        'Choose an active category before recording this repeat.',
+                                        style: textStyle(
+                                          context,
+                                          size: 14,
+                                          color: p.secondary,
+                                        ),
+                                      ),
+                                    ),
                                   const SizedBox(height: 8),
                                 ],
                               ),
@@ -496,88 +568,7 @@ class _EntryPageState extends State<EntryPage> {
                           vertical: 4,
                         ),
                         child: isTransfer
-                            ? Row(
-                                children: [
-                                  Expanded(
-                                    child: Press(
-                                      key: const ValueKey('transfer-from'),
-                                      color: p.surface,
-                                      label:
-                                          'Transfer from ${app.ledger.wallet(draft.from)?.label ?? "Choose wallet"}',
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 12,
-                                      ),
-                                      onPressed: app.busy
-                                          ? null
-                                          : () async {
-                                              final w = await chooseWallet(
-                                                context,
-                                                selectableWallets,
-                                                title: 'Transfer from',
-                                              );
-                                              if (w != null && mounted) {
-                                                change(() => draft.from = w);
-                                              }
-                                            },
-                                      child: Text(
-                                        app.ledger.wallet(draft.from)?.label ??
-                                            'From',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: textStyle(context, size: 14),
-                                      ),
-                                    ),
-                                  ),
-                                  Press(
-                                    label: 'Reverse transfer direction',
-                                    padding: const EdgeInsets.all(8),
-                                    onPressed: app.busy
-                                        ? null
-                                        : () => change(() {
-                                            final from = draft.from;
-                                            draft.from = draft.to;
-                                            draft.to = from;
-                                          }),
-                                    child: Icon(
-                                      CupertinoIcons.arrow_right_arrow_left,
-                                      color: p.accent,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Press(
-                                      key: const ValueKey('transfer-to'),
-                                      color: p.surface,
-                                      label:
-                                          'Transfer to ${app.ledger.wallet(draft.to)?.label ?? "Choose wallet"}',
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 12,
-                                      ),
-                                      onPressed: app.busy
-                                          ? null
-                                          : () async {
-                                              final w = await chooseWallet(
-                                                context,
-                                                selectableWallets,
-                                                title: 'Transfer to',
-                                              );
-                                              if (w != null && mounted) {
-                                                change(() => draft.to = w);
-                                              }
-                                            },
-                                      child: Text(
-                                        app.ledger.wallet(draft.to)?.label ??
-                                            'To',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: textStyle(context, size: 14),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              )
+                            ? const SizedBox.shrink()
                             : Row(
                                 children: [
                                   Expanded(
@@ -596,11 +587,15 @@ class _EntryPageState extends State<EntryPage> {
                                                       : null,
                                                   onPressed: app.busy
                                                       ? null
-                                                      : () => change(
-                                                          () =>
-                                                              draft.categoryId =
-                                                                  c.id,
-                                                        ),
+                                                      : () => change(() {
+                                                          draft.categoryId =
+                                                              c.id;
+                                                          if (draft
+                                                              .repeatEntry) {
+                                                            draft.repeatCategoryExplicit =
+                                                                true;
+                                                          }
+                                                        }),
                                                   color:
                                                       c.id == draft.categoryId
                                                       ? categoryColor(
@@ -757,6 +752,51 @@ class _EntryPageState extends State<EntryPage> {
                                     ? null
                                     : () => save(draft.from),
                               )
+                            : draft.repeatEntry
+                            ? app.ledger.availableWallets.isEmpty
+                                  ? PrimaryButton(
+                                      'Add or restore a wallet',
+                                      icon: CupertinoIcons.add,
+                                      onPressed: app.busy
+                                          ? null
+                                          : () => pushPocket<void>(
+                                              context,
+                                              WalletsPage(app: app),
+                                            ),
+                                    )
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SecondaryButton(
+                                          key: const ValueKey(
+                                            'repeat-select-wallet',
+                                          ),
+                                          repeatWallet == null
+                                              ? 'Choose an active wallet'
+                                              : '${entryAction(draft.kind)} ${repeatWallet.label} · Change',
+                                          icon: CupertinoIcons.square_grid_2x2,
+                                          onPressed: submitting || app.busy
+                                              ? null
+                                              : chooseRepeatWallet,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        PrimaryButton(
+                                          key: const ValueKey(
+                                            'repeat-save-entry',
+                                          ),
+                                          repeatWallet == null
+                                              ? 'Choose a wallet to continue'
+                                              : 'Record ${draft.kind.name} in ${repeatWallet.label}',
+                                          icon: CupertinoIcons.check_mark,
+                                          onPressed:
+                                              submitting ||
+                                                  app.busy ||
+                                                  repeatWallet == null
+                                              ? null
+                                              : () => save(repeatWallet),
+                                        ),
+                                      ],
+                                    )
                             : _DirectWalletActions(
                                 key: ValueKey(
                                   app.ledger.preferences.quickWallets.join(','),
@@ -799,7 +839,17 @@ class _EntryPageState extends State<EntryPage> {
                   }
                   final enlarged =
                       MediaQuery.textScalerOf(context).scale(1) > 1.25;
+                  final transferScroll =
+                      isTransfer && (enlarged || constraints.maxWidth < 360);
+                  final contentHeight = transferScroll
+                      ? enlarged
+                            ? 1120.0
+                            : 950.0
+                      : enlarged
+                      ? 700.0
+                      : 680.0;
                   final needsScroll =
+                      transferScroll ||
                       constraints.maxHeight < 480 ||
                       constraints.maxHeight < 640 &&
                           (enlarged ||
@@ -810,7 +860,7 @@ class _EntryPageState extends State<EntryPage> {
                   return needsScroll
                       ? SingleChildScrollView(
                           child: SizedBox(
-                            height: enlarged ? 700 : 680,
+                            height: contentHeight,
                             child: content,
                           ),
                         )
@@ -1218,19 +1268,182 @@ class _TransferBalances extends StatelessWidget {
   const _TransferBalances({
     required this.preview,
     required this.disabled,
+    required this.onChooseSource,
+    required this.onChooseDestination,
+    required this.onReverse,
     required this.onTransferAll,
   });
 
   final TransferPreview preview;
   final bool disabled;
+  final VoidCallback onChooseSource;
+  final VoidCallback onChooseDestination;
+  final VoidCallback onReverse;
   final VoidCallback onTransferAll;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.25;
+
+    Widget picker({
+      required Key key,
+      required String direction,
+      required Wallet wallet,
+      required VoidCallback onChoose,
+    }) => Press(
+      key: key,
+      label: 'Transfer $direction ${wallet.label}',
+      color: p.background,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      onPressed: disabled ? null : onChoose,
+      child: Row(
+        children: [
+          Text(
+            '$direction ·',
+            style: textStyle(
+              context,
+              size: 15,
+              weight: FontWeight.w600,
+              color: p.secondary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              wallet.label,
+              key: ValueKey('transfer-wallet-${wallet.id}'),
+              softWrap: true,
+              textWidthBasis: TextWidthBasis.parent,
+              style: textStyle(context, size: 18, weight: FontWeight.w600),
+            ),
+          ),
+          Icon(
+            CupertinoIcons.chevron_down,
+            size: 16,
+            color: disabled ? p.secondary : p.accent,
+          ),
+        ],
+      ),
+    );
+
+    Widget balanceValues({
+      required Wallet wallet,
+      required int before,
+      required int? after,
+    }) => Semantics(
+      label:
+          '${wallet.label}. Before ${money(before)}. After ${after == null ? 'unavailable' : money(after)}.',
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, bounds) {
+            Widget amount(String value, Key key, {Color? color}) => Text(
+              value,
+              key: key,
+              softWrap: false,
+              style: textStyle(
+                context,
+                size: 18,
+                weight: FontWeight.w700,
+                color: color,
+                tabular: true,
+              ),
+            );
+            final current = amount(
+              money(before),
+              ValueKey('transfer-before-${wallet.id}'),
+            );
+            final projected = amount(
+              after == null ? '—' : money(after),
+              ValueKey('transfer-after-${wallet.id}'),
+              color: after == null ? p.secondary : p.accent,
+            );
+            if (largeText || bounds.maxWidth < 290) {
+              final labelWidth = largeText ? 82.0 : 58.0;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: labelWidth,
+                        child: Text(
+                          'Before',
+                          style: textStyle(
+                            context,
+                            size: 14,
+                            color: p.secondary,
+                          ),
+                        ),
+                      ),
+                      Expanded(child: current),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: labelWidth,
+                        child: Text(
+                          'After',
+                          style: textStyle(
+                            context,
+                            size: 14,
+                            color: p.secondary,
+                          ),
+                        ),
+                      ),
+                      Expanded(child: projected),
+                    ],
+                  ),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: current),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  child: Icon(
+                    CupertinoIcons.arrow_right,
+                    size: 16,
+                    color: p.secondary,
+                  ),
+                ),
+                Expanded(child: projected),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    final transferAll = Press(
+      key: const ValueKey('transfer-all'),
+      label: 'Transfer all available funds',
+      color: preview.canTransferAll ? p.tint : p.background,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      onPressed: disabled || !preview.canTransferAll ? null : onTransferAll,
+      child: Text(
+        'All',
+        style: textStyle(
+          context,
+          size: 16,
+          weight: FontWeight.w600,
+          color: disabled || !preview.canTransferAll ? p.secondary : p.accent,
+        ),
+      ),
+    );
+
+    final combinedTotal = preview.activeTotalAfter == null
+        ? 'Total ${money(preview.activeTotalCurrent)}'
+        : preview.activeTotalCurrent == preview.activeTotalAfter
+        ? 'Total ${money(preview.activeTotalCurrent)} · Unchanged'
+        : 'Total ${money(preview.activeTotalCurrent)} → ${money(preview.activeTotalAfter!)}';
+
     return Container(
+      key: const ValueKey('transfer-balance-card'),
       width: double.infinity,
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: p.surface,
         borderRadius: BorderRadius.circular(p.cardRadius),
@@ -1240,144 +1453,91 @@ class _TransferBalances extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            key: const ValueKey('transfer-source-header'),
             children: [
               Expanded(
-                child: _walletProjection(
-                  context,
-                  label: '${preview.source.label} · From',
-                  current: preview.sourceCurrent,
-                  available: preview.sourceAvailable,
-                  after: preview.sourceAfter,
-                  showAvailable:
-                      preview.sourceCurrent != preview.sourceAvailable,
+                child: picker(
+                  key: const ValueKey('transfer-from'),
+                  direction: 'From',
+                  wallet: preview.source,
+                  onChoose: onChooseSource,
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _walletProjection(
-                  context,
-                  label: '${preview.destination.label} · To',
-                  current: preview.destinationCurrent,
-                  after: preview.destinationAfter,
-                ),
-              ),
+              const SizedBox(width: 4),
+              transferAll,
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Active wallet total now: ${money(preview.activeTotalCurrent)}',
-                      style: textStyle(context, size: 12, color: p.secondary),
-                    ),
-                    Text(
-                      'After transfer: ${preview.activeTotalAfter == null ? 'Enter a valid amount' : money(preview.activeTotalAfter!)}',
-                      style: textStyle(context, size: 12, color: p.secondary),
-                    ),
-                  ],
-                ),
+          balanceValues(
+            wallet: preview.source,
+            before: preview.sourceCurrent,
+            after: preview.sourceAfter,
+          ),
+          if (preview.sourceCurrent != preview.sourceAvailable) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Available to transfer · ${money(preview.sourceAvailable)}',
+              key: const ValueKey('transfer-source-available'),
+              style: textStyle(context, size: 14, color: p.secondary),
+            ),
+          ],
+          Align(
+            alignment: Alignment.center,
+            child: Press(
+              key: const ValueKey('transfer-reverse'),
+              label: 'Reverse transfer direction',
+              onPressed: disabled ? null : onReverse,
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                CupertinoIcons.arrow_right_arrow_left,
+                color: disabled ? p.secondary : p.accent,
+                size: 22,
               ),
-              const SizedBox(width: 8),
-              Press(
-                label: 'Transfer all available funds',
-                color: p.line,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                onPressed: disabled || !preview.canTransferAll
-                    ? null
-                    : onTransferAll,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      CupertinoIcons.arrow_down_to_line,
-                      size: 15,
-                      color: disabled || !preview.canTransferAll
-                          ? p.secondary
-                          : p.accent,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      'Transfer all',
-                      style: textStyle(
-                        context,
-                        size: 12,
-                        weight: FontWeight.w600,
-                        color: disabled || !preview.canTransferAll
-                            ? p.secondary
-                            : p.accent,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
+          ),
+          picker(
+            key: const ValueKey('transfer-to'),
+            direction: 'To',
+            wallet: preview.destination,
+            onChoose: onChooseDestination,
+          ),
+          balanceValues(
+            wallet: preview.destination,
+            before: preview.destinationCurrent,
+            after: preview.destinationAfter,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            combinedTotal,
+            key: const ValueKey('transfer-active-total'),
+            softWrap: true,
+            style: textStyle(
+              context,
+              size: 14,
+              weight: FontWeight.w500,
+              color: p.secondary,
+            ),
           ),
           if (preview.error != null) ...[
             const SizedBox(height: 6),
-            ErrorLine(preview.error),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                preview.error!,
+                softWrap: true,
+                style: textStyle(context, size: 16, color: p.danger),
+              ),
+            ),
           ],
           if (preview.transferAllWasCapped) ...[
             const SizedBox(height: 6),
             Text(
               'One transfer is limited to ${money(maxCentavos)}. Split a larger balance across transfers.',
-              style: textStyle(context, size: 12, color: p.secondary),
+              softWrap: true,
+              style: textStyle(context, size: 15, color: p.secondary),
             ),
           ],
         ],
       ),
-    );
-  }
-
-  Widget _walletProjection(
-    BuildContext context, {
-    required String label,
-    required int current,
-    required int? after,
-    int? available,
-    bool showAvailable = false,
-  }) {
-    final p = Palette.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: textStyle(context, size: 12, color: p.secondary)),
-        const SizedBox(height: 2),
-        Text(
-          'Now ${money(current)}',
-          softWrap: true,
-          style: textStyle(
-            context,
-            size: 14,
-            weight: FontWeight.w600,
-            tabular: true,
-          ),
-        ),
-        if (showAvailable && available != null)
-          Text(
-            'Available ${money(available)}',
-            softWrap: true,
-            style: textStyle(
-              context,
-              size: 11,
-              color: p.secondary,
-              tabular: true,
-            ),
-          ),
-        Text(
-          'After ${after == null ? '—' : money(after)}',
-          softWrap: true,
-          style: textStyle(context, size: 13, color: p.accent, tabular: true),
-        ),
-      ],
     );
   }
 }

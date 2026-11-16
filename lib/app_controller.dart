@@ -31,6 +31,8 @@ class AppController extends ChangeNotifier {
   String? feedback;
   bool feedbackUndo = false;
   bool entryVisible = false;
+  bool repeatOpening = false;
+  String? celebratedLoanId;
   void publish() => notifyListeners();
 
   Future<void> initialize() async {
@@ -51,8 +53,10 @@ class AppController extends ChangeNotifier {
     } on LedgerException catch (e) {
       notice = e.message;
     }
+    _normalizeRepeatDraftReferences();
     if (draft?.kind == EntryKind.income &&
         draft?.editingId == null &&
+        draft?.repeatEntry != true &&
         !ledger
             .categoriesFor(EntryKind.income)
             .any((c) => c.id == draft!.categoryId)) {
@@ -111,6 +115,7 @@ class AppController extends ChangeNotifier {
         feedbackUndo = false;
       }
       ledger = loaded.ledger;
+      _normalizeRepeatDraftReferences();
       notice ??= loaded.notice;
       await _sync();
     } catch (_) {
@@ -140,6 +145,7 @@ class AppController extends ChangeNotifier {
     feedbackUndo = false;
     try {
       ledger = (await store.load()).ledger;
+      _normalizeRepeatDraftReferences();
       await _sync();
     } catch (_) {
       /* A failed read never authorizes replacing unreadable files. */
@@ -170,12 +176,96 @@ class AppController extends ChangeNotifier {
     updateDraft();
   }
 
+  Entry? repeatableEntry(String sourceId) {
+    final source = ledger.entry(sourceId);
+    if (source == null ||
+        source.deleted ||
+        source.adjustment != null ||
+        source.kind == EntryKind.transfer) {
+      return null;
+    }
+    return source;
+  }
+
+  bool startRepeatDraft(String sourceId) {
+    if (busy || draft?.dirty == true) return false;
+    final source = repeatableEntry(sourceId);
+    if (source == null) return false;
+    final category = _repeatCategory(
+      source.kind,
+      source.categoryId,
+      requireStored: true,
+    );
+    final wallet = ledger.availableWallets
+        .where((candidate) => candidate == source.wallet)
+        .firstOrNull;
+    draft = Draft(
+      amount: moneyInput(source.centavos),
+      kind: source.kind,
+      date: dayKey(clock().toLocal()),
+      categoryId: category?.id,
+      note: source.note,
+      repeatEntry: true,
+      repeatCategoryExplicit: false,
+      preferredWallet: wallet,
+    );
+    updateDraft();
+    notifyListeners();
+    return true;
+  }
+
+  Category? _repeatCategory(
+    EntryKind kind,
+    String? categoryId, {
+    bool requireStored = false,
+  }) {
+    if (kind == EntryKind.transfer || categoryId == null) return null;
+    final stored = ledger.category(categoryId);
+    if ((requireStored && stored == null) ||
+        (stored != null &&
+            (stored.archived ||
+                stored.isIncome != (kind == EntryKind.income)))) {
+      return null;
+    }
+    return ledger
+        .categoriesFor(kind)
+        .where((candidate) => candidate.id == categoryId)
+        .firstOrNull;
+  }
+
+  void _normalizeRepeatDraftReferences() {
+    final current = draft;
+    if (current == null || !current.repeatEntry) return;
+    final categoryId = _repeatCategory(
+      current.kind,
+      current.categoryId,
+      requireStored: !current.repeatCategoryExplicit,
+    )?.id;
+    final wallet = ledger.availableWallets
+        .where((candidate) => candidate == current.preferredWallet)
+        .firstOrNull;
+    if (current.categoryId != categoryId || current.preferredWallet != wallet) {
+      current.categoryId = categoryId;
+      current.preferredWallet = wallet;
+      updateDraft();
+    }
+  }
+
   void changeDraftKind(EntryKind kind) {
     if (draft == null || draft!.kind == kind) return;
     draft!.kind = kind;
-    draft!.categoryId = kind == EntryKind.income
-        ? ledger.categoriesFor(kind).firstOrNull?.id
-        : null;
+    if (draft!.repeatEntry) {
+      draft!.categoryId = _repeatCategory(
+        kind,
+        draft!.categoryId,
+        requireStored: !draft!.repeatCategoryExplicit,
+      )?.id;
+      if (draft!.categoryId == null) draft!.repeatCategoryExplicit = false;
+    } else {
+      draft!.categoryId = kind == EntryKind.income
+          ? ledger.categoriesFor(kind).firstOrNull?.id
+          : null;
+    }
   }
 
   void updateDraft() {
@@ -247,11 +337,26 @@ class AppController extends ChangeNotifier {
 
   Future<bool> saveDraft(Wallet wallet) async {
     if (busy || draft == null) return false;
+    _normalizeRepeatDraftReferences();
     final current = draft!;
     Entry next;
     Category? selected;
     try {
+      if (current.repeatEntry &&
+          (current.editingId != null || ledger.entry(current.id) != null)) {
+        throw const LedgerException(
+          'Repeating an entry must create a new record. Start a fresh repeat.',
+        );
+      }
       final cents = parseMoney(current.amount);
+      if (current.repeatEntry && current.kind != EntryKind.transfer) {
+        final selectedWallet = ledger.wallet(current.preferredWallet);
+        if (selectedWallet?.archived != false || selectedWallet != wallet) {
+          throw const LedgerException(
+            'Choose an active wallet for this repeated entry.',
+          );
+        }
+      }
       final before = current.editingId == null
           ? null
           : ledger.entry(current.editingId!);
@@ -346,10 +451,25 @@ class AppController extends ChangeNotifier {
     return result;
   }
 
-  Future<bool> undo() => commit(
-    (l) => l.undo(clock().millisecondsSinceEpoch),
-    message: 'Change undone',
-  );
+  Future<bool> undo() async {
+    final result = await commit(
+      (l) => l.undo(clock().millisecondsSinceEpoch),
+      message: 'Change undone',
+    );
+    if (result) {
+      celebratedLoanId = null;
+      publish();
+    }
+    return result;
+  }
+
+  void clearLoanCelebration(String id) {
+    if (celebratedLoanId == id) {
+      celebratedLoanId = null;
+      notifyListeners();
+    }
+  }
+
   Future<bool> delete(Entry e) => commit(
     (l) => l.delete(e.id, clock().millisecondsSinceEpoch),
     message: 'Entry moved to Recently deleted',

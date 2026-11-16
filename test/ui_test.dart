@@ -668,6 +668,7 @@ void main() {
     'custom transfer destination and self-transfer rejection work in entry UI',
     (tester) async {
       configure(tester, const Size(390, 844));
+      final semantics = tester.ensureSemantics();
       const maya = Wallet(id: 'fixture_maya', label: 'Maya', color: 'green');
       final app = fixture(
         synthetic(populated: false).copy(
@@ -700,16 +701,35 @@ void main() {
         find.byKey(const ValueKey('wallet-choice-fixture_maya')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Now ₱3.00'), findsOneWidget);
-      await tester.tap(find.text('Transfer all'));
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('transfer-before-cash')))
+            .data,
+        '₱3.00',
+      );
+      await tester.tap(find.byKey(const ValueKey('transfer-all')));
       await tester.pumpAndSettle();
       expect(app.draft!.amount, '3.00');
-      expect(find.text('After ₱0.00'), findsOneWidget);
-      expect(find.text('After ₱3.00'), findsOneWidget);
       expect(
-        find.textContaining('Active wallet total now: ₱3.00'),
+        tester
+            .widget<Text>(find.byKey(const ValueKey('transfer-after-cash')))
+            .data,
+        '₱0.00',
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('transfer-after-fixture_maya')),
+            )
+            .data,
+        '₱3.00',
+      );
+      expect(
+        find.bySemanticsLabel('Cash. Before ₱3.00. After ₱0.00.'),
         findsOneWidget,
       );
+      expect(find.text('Total ₱3.00 · Unchanged'), findsOneWidget);
+      semantics.dispose();
       await tester.tap(find.text('Record Cash → Maya'));
       await tester.pumpAndSettle();
       expect(app.ledger.active.single.toWallet, maya);
@@ -717,6 +737,447 @@ void main() {
       expect(app.ledger.calculate(maya).balance, 300);
       expect(app.ledger.total(EntryKind.expense), 0);
       await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('transfer preview uses readable integrated wallet controls', (
+    tester,
+  ) async {
+    configure(tester, const Size(390, 844));
+    final app = fixture(
+      synthetic(populated: false)
+          .copy(openings: {Wallet.cash: 170000, Wallet.gcash: 0}),
+    );
+    addTearDown(app.dispose);
+    app.ledger = app.ledger.copy(
+      preferences: app.ledger.preferences.copy(
+        visualStyle: VisualStyle.powderBlue,
+      ),
+    );
+    app.startDraft();
+    app.draft!
+      ..kind = EntryKind.transfer
+      ..amount = '20'
+      ..from = Wallet.gcash
+      ..to = Wallet.cash;
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: captureKey,
+        child: PocketApp(
+          controller: app,
+          testHome: EntryPage(controller: app),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('transfer-balance-card'));
+    expect(card, findsOneWidget);
+    for (final key in const ['transfer-from', 'transfer-to']) {
+      final selector = find.byKey(ValueKey(key));
+      expect(find.descendant(of: card, matching: selector), findsOneWidget);
+      expect(tester.getSize(selector).height, greaterThanOrEqualTo(48));
+    }
+    expect(find.text('GCash'), findsOneWidget);
+    expect(find.text('Cash'), findsOneWidget);
+    expect(find.text('Not enough in GCash. Available: ₱0.00.'), findsOneWidget);
+    expect(find.text('Enter a valid amount'), findsNothing);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('transfer-wallet-gcash')))
+          .style!
+          .fontSize,
+      greaterThanOrEqualTo(18),
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('transfer-before-gcash')))
+          .style!
+          .fontSize,
+      greaterThanOrEqualTo(18),
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('transfer-after-gcash')))
+          .style!
+          .fontSize,
+      greaterThanOrEqualTo(18),
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('transfer-active-total')))
+          .data,
+      'Total ₱1,700.00',
+    );
+    expect(find.text('All'), findsOneWidget);
+    expect(
+      tester.widget<Press>(find.byKey(const ValueKey('transfer-all'))).label,
+      'Transfer all available funds',
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('transfer-all'))).height,
+      greaterThanOrEqualTo(44),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('transfer-reverse'))).height,
+      greaterThanOrEqualTo(44),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('transfer-all'))).bottom,
+      lessThan(820),
+    );
+    expect(
+      tester
+          .getRect(find.text('Not enough in GCash. Available: ₱0.00.'))
+          .bottom,
+      lessThan(820),
+    );
+    expect(
+      tester
+          .widget<Press>(find.byKey(const ValueKey('transfer-all')))
+          .onPressed,
+      isNull,
+    );
+    await capture(tester, captureKey, 'transfer-insufficient-powder-blue');
+
+    await tester.tap(find.byIcon(CupertinoIcons.arrow_right_arrow_left).first);
+    await tester.pumpAndSettle();
+    expect(app.draft!.from, Wallet.cash);
+    expect(app.draft!.to, Wallet.gcash);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('transfer preview remains readable at large text scale', (
+    tester,
+  ) async {
+    configure(tester, const Size(360, 640), scale: 1.5);
+    final app = fixture(
+      synthetic(populated: false)
+          .copy(openings: {Wallet.cash: 170000, Wallet.gcash: 30000}),
+    );
+    addTearDown(app.dispose);
+    app.startDraft();
+    app.draft!
+      ..kind = EntryKind.transfer
+      ..amount = '20'
+      ..from = Wallet.gcash
+      ..to = Wallet.cash;
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: captureKey,
+        child: PocketApp(
+          controller: app,
+          testHome: EntryPage(controller: app),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('transfer-balance-card')), findsOneWidget);
+    expect(find.byKey(const ValueKey('transfer-before-gcash')), findsOneWidget);
+    expect(find.byKey(const ValueKey('transfer-after-cash')), findsOneWidget);
+    expect(find.text('All'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('transfer-from')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.byKey(const ValueKey('transfer-from'))).top,
+      greaterThanOrEqualTo(0),
+    );
+    expect(
+      tester.getRect(find.byKey(const ValueKey('transfer-after-cash'))).bottom,
+      lessThan(640),
+    );
+    await capture(tester, captureKey, 'transfer-large-type-top');
+    await tester.ensureVisible(find.byKey(const ValueKey('transfer-all')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.byKey(const ValueKey('transfer-all'))).bottom,
+      lessThan(640),
+    );
+    expect(tester.takeException(), isNull);
+    await capture(tester, captureKey, 'transfer-large-type-scrolled');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'full-width MariBank transfer rows show clear before and after balances',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      final semantics = tester.ensureSemantics();
+      const mariBank = Wallet(
+        id: 'fixture_maribank',
+        label: 'MariBank',
+        icon: 'phone',
+        color: 'green',
+      );
+      final base = synthetic(populated: false).copy(
+        wallets: [...Wallet.values, mariBank],
+        openings: {Wallet.cash: 200000, Wallet.gcash: 0, mariBank: 1000000},
+      );
+      final app = fixture(base);
+      addTearDown(app.dispose);
+      app.ledger = app.ledger.copy(
+        preferences: app.ledger.preferences.copy(
+          visualStyle: VisualStyle.powderBlue,
+        ),
+      );
+      app.startDraft();
+      app.draft!
+        ..kind = EntryKind.transfer
+        ..amount = '500'
+        ..from = mariBank
+        ..to = Wallet.gcash;
+      final captureKey = GlobalKey();
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: captureKey,
+          child: PocketApp(
+            controller: app,
+            testHome: EntryPage(controller: app),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('MariBank'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('transfer-before-fixture_maribank')),
+            )
+            .data,
+        '₱10,000.00',
+      );
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey('transfer-after-fixture_maribank')),
+            )
+            .data,
+        '₱9,500.00',
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('transfer-before-gcash')))
+            .data,
+        '₱0.00',
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('transfer-after-gcash')))
+            .data,
+        '₱500.00',
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('transfer-active-total')))
+            .data,
+        'Total ₱12,000.00 · Unchanged',
+      );
+      expect(
+        find.bySemanticsLabel('MariBank. Before ₱10,000.00. After ₱9,500.00.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .getRect(find.byKey(const ValueKey('transfer-source-header')))
+            .width,
+        greaterThan(300),
+      );
+      expect(
+        tester.getRect(find.byKey(const ValueKey('transfer-to'))).width,
+        greaterThan(300),
+      );
+      expect(tester.takeException(), isNull);
+      await capture(tester, captureKey, 'clarity-transfer-maribank-standard');
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('MariBank Savings Wallet stays readable on a narrow phone', (
+    tester,
+  ) async {
+    configure(tester, const Size(320, 700));
+    const wallet = Wallet(
+      id: 'fixture_mari_savings',
+      label: 'MariBank Savings Wallet',
+      icon: 'phone',
+      color: 'green',
+    );
+    final base = synthetic(populated: false).copy(
+      wallets: [...Wallet.values, wallet],
+      openings: {Wallet.cash: 200000, Wallet.gcash: 0, wallet: 1000000},
+    );
+    final app = fixture(base);
+    addTearDown(app.dispose);
+    app.startDraft();
+    app.draft!
+      ..kind = EntryKind.transfer
+      ..amount = '500'
+      ..from = wallet
+      ..to = Wallet.gcash;
+    final captureKey = GlobalKey();
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: captureKey,
+        child: PocketApp(
+          controller: app,
+          testHome: EntryPage(controller: app),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final name = find.byKey(
+      const ValueKey('transfer-wallet-fixture_mari_savings'),
+    );
+    await tester.ensureVisible(name);
+    await tester.pumpAndSettle();
+    await capture(
+      tester,
+      captureKey,
+      'clarity-transfer-narrow-long-wallet-top',
+    );
+    expect(tester.widget<Text>(name).data, 'MariBank Savings Wallet');
+    for (final label in ['Before', 'After']) {
+      final labels = find.text(label);
+      expect(labels, findsNWidgets(2));
+      expect(tester.getSize(labels.first).height, lessThan(32));
+    }
+    expect(
+      find.byKey(const ValueKey('transfer-after-fixture_mari_savings')),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('transfer-all')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(find.byKey(const ValueKey('transfer-all'))).bottom,
+      lessThan(700),
+    );
+    expect(tester.takeException(), isNull);
+    await capture(tester, captureKey, 'clarity-transfer-narrow-long-wallet');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'long MariBank name and transfer controls remain reachable at large text',
+    (tester) async {
+      configure(tester, const Size(360, 640), scale: 1.5);
+      const wallet = Wallet(
+        id: 'fixture_mari_savings',
+        label: 'MariBank Savings Wallet',
+        icon: 'phone',
+        color: 'green',
+      );
+      final base = synthetic(populated: false).copy(
+        wallets: [...Wallet.values, wallet],
+        openings: {Wallet.cash: 200000, Wallet.gcash: 0, wallet: 1000000},
+      );
+      final app = fixture(base);
+      addTearDown(app.dispose);
+      app.startDraft();
+      app.draft!
+        ..kind = EntryKind.transfer
+        ..amount = '500'
+        ..from = wallet
+        ..to = Wallet.gcash;
+      final captureKey = GlobalKey();
+      await tester.pumpWidget(
+        RepaintBoundary(
+          key: captureKey,
+          child: PocketApp(
+            controller: app,
+            testHome: EntryPage(controller: app),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final name = find.byKey(
+        const ValueKey('transfer-wallet-fixture_mari_savings'),
+      );
+      await tester.ensureVisible(name);
+      await tester.pumpAndSettle();
+      await capture(
+        tester,
+        captureKey,
+        'clarity-transfer-large-long-wallet-top',
+      );
+      expect(tester.widget<Text>(name).data, 'MariBank Savings Wallet');
+      for (final label in ['Before', 'After']) {
+        final labels = find.text(label);
+        expect(labels, findsNWidgets(2));
+        expect(tester.getSize(labels.first).height, lessThan(32));
+      }
+      expect(
+        find.byKey(const ValueKey('transfer-before-fixture_mari_savings')),
+        findsOneWidget,
+      );
+      await tester.ensureVisible(find.byKey(const ValueKey('transfer-all')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const ValueKey('transfer-all'))).bottom,
+        lessThan(640),
+      );
+      expect(tester.takeException(), isNull);
+      await capture(tester, captureKey, 'clarity-transfer-large-long-wallet');
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'Moss, Clay and Graphite apply distinct readable transfer palettes',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      const mariBank = Wallet(
+        id: 'fixture_maribank',
+        label: 'MariBank',
+        icon: 'phone',
+        color: 'green',
+      );
+      for (final style in const [
+        VisualStyle.moss,
+        VisualStyle.clay,
+        VisualStyle.graphite,
+      ]) {
+        final base = synthetic(populated: false).copy(
+          openings: {Wallet.cash: 200000, Wallet.gcash: 0, mariBank: 1000000},
+          wallets: [...Wallet.values, mariBank],
+          preferences: Preferences(theme: 'light', visualStyle: style),
+        );
+        final app = fixture(base);
+        app.startDraft();
+        app.draft!
+          ..kind = EntryKind.transfer
+          ..amount = '500'
+          ..from = mariBank
+          ..to = Wallet.gcash;
+        final captureKey = GlobalKey();
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: captureKey,
+            child: PocketApp(
+              controller: app,
+              testHome: EntryPage(controller: app),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('MariBank'), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('transfer-active-total')),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await capture(
+          tester,
+          captureKey,
+          'clarity-transfer-theme-${style.name}',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        app.dispose();
+      }
     },
   );
 
@@ -916,6 +1377,18 @@ void main() {
         'transfer-light': (
           theme: 'light',
           size: const Size(390, 844),
+          scale: 1,
+          page: 'transfer',
+        ),
+        'transfer-large-type': (
+          theme: 'light',
+          size: const Size(360, 640),
+          scale: 1.5,
+          page: 'transfer',
+        ),
+        'transfer-narrow-phone': (
+          theme: 'light',
+          size: const Size(320, 700),
           scale: 1,
           page: 'transfer',
         ),

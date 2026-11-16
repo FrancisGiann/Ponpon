@@ -203,7 +203,7 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
   Future<void> quickEntry(Map<dynamic, dynamic> request) async {
     if (!mounted || navigator.currentState == null) return;
     if (request['bills'] == true) {
-      if (app.entryVisible || quickOpening || app.busy) {
+      if (app.entryVisible || app.repeatOpening || quickOpening || app.busy) {
         app.feedback = 'Finish the current action before opening bills.';
         app.feedbackUndo = false;
         app.publish();
@@ -228,7 +228,7 @@ class _PocketAppState extends State<PocketApp> with WidgetsBindingObserver {
     final walletId = request['walletId'] is String
         ? request['walletId'] as String
         : null;
-    if (app.entryVisible || quickOpening || app.busy) {
+    if (app.entryVisible || app.repeatOpening || quickOpening || app.busy) {
       if (app.draft?.dirty == true) {
         app.feedback = 'An entry is in progress. Finish it first.';
         app.feedbackUndo = false;

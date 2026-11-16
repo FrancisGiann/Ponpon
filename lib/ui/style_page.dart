@@ -5,6 +5,9 @@ String visualStyleName(VisualStyle style) => switch (style) {
   VisualStyle.powderBlue => 'Powder Blue',
   VisualStyle.notebook => 'Notebook',
   VisualStyle.midnight => 'Midnight',
+  VisualStyle.moss => 'Moss',
+  VisualStyle.clay => 'Clay',
+  VisualStyle.graphite => 'Graphite',
 };
 
 String visualStyleDescription(VisualStyle style) => switch (style) {
@@ -14,6 +17,12 @@ String visualStyleDescription(VisualStyle style) => switch (style) {
   VisualStyle.notebook => 'Warm paper, fine rules and classic headings.',
   VisualStyle.midnight =>
     'Deep navy, crisp edges and luminous blue details. Always dark.',
+  VisualStyle.moss =>
+    'Quiet sage surfaces, forest ink and rounded, low-glare controls.',
+  VisualStyle.clay =>
+    'Warm sand and soft terracotta with matte, balanced surfaces.',
+  VisualStyle.graphite =>
+    'Charcoal surfaces with smoky gold details. Always dark.',
 };
 
 class VisualStylePage extends StatelessWidget {
@@ -61,6 +70,7 @@ class _StylePreview extends StatelessWidget {
     final selected = app.ledger.preferences.visualStyle == style;
     final dark =
         style == VisualStyle.midnight ||
+        style == VisualStyle.graphite ||
         (app.ledger.preferences.theme == 'dark' ||
             (app.ledger.preferences.theme == 'system' &&
                 MediaQuery.platformBrightnessOf(context) == Brightness.dark));
@@ -106,7 +116,8 @@ class _StylePreview extends StatelessWidget {
               child: Surface(
                 detailBand:
                     style == VisualStyle.powderBlue ||
-                    style == VisualStyle.notebook,
+                    style == VisualStyle.notebook ||
+                    style == VisualStyle.moss,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [

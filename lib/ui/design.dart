@@ -31,69 +31,105 @@ class Palette {
     VisualStyle.powderBlue => tone(0xFFEFF6FC, 0xFF142431),
     VisualStyle.notebook => tone(0xFFF6F1E5, 0xFF25231F),
     VisualStyle.midnight => const Color(0xFF0C1420),
+    VisualStyle.moss => tone(0xFFEEF2E8, 0xFF1C271F),
+    VisualStyle.clay => tone(0xFFF7EEE8, 0xFF2C211D),
+    VisualStyle.graphite => const Color(0xFF111315),
     _ => tone(0xFFF6F4F1, 0xFF151416),
   };
   Color get surface => switch (style) {
     VisualStyle.powderBlue => tone(0xFFF8FCFF, 0xFF1F3546),
     VisualStyle.notebook => tone(0xFFFFFCF4, 0xFF302C26),
     VisualStyle.midnight => const Color(0xFF152235),
+    VisualStyle.moss => tone(0xFFF7FAF4, 0xFF28362C),
+    VisualStyle.clay => tone(0xFFFFFAF6, 0xFF3D2D27),
+    VisualStyle.graphite => const Color(0xFF1C1F22),
     _ => tone(0xFFFFFFFF, 0xFF232125),
   };
   Color get ink => switch (style) {
     VisualStyle.powderBlue => tone(0xFF173447, 0xFFEDF7FF),
     VisualStyle.notebook => tone(0xFF302A23, 0xFFF5ECDD),
     VisualStyle.midnight => const Color(0xFFF0F5FF),
+    VisualStyle.moss => tone(0xFF26342A, 0xFFEEF4E9),
+    VisualStyle.clay => tone(0xFF392922, 0xFFF6EAE2),
+    VisualStyle.graphite => const Color(0xFFF1F2EF),
     _ => tone(0xFF27212A, 0xFFF7F3F1),
   };
   Color get secondary => switch (style) {
     VisualStyle.powderBlue => tone(0xFF4B6274, 0xFFB8CCD9),
     VisualStyle.notebook => tone(0xFF685C4D, 0xFFC9BCA7),
     VisualStyle.midnight => const Color(0xFFB8C8DC),
+    VisualStyle.moss => tone(0xFF516451, 0xFFB9C8B8),
+    VisualStyle.clay => tone(0xFF75584A, 0xFFD2B7A8),
+    VisualStyle.graphite => const Color(0xFFB4BAB5),
     _ => tone(0xFF6A606F, 0xFFBBB3BD),
   };
   Color get line => switch (style) {
     VisualStyle.powderBlue => tone(0xFFB7CBDA, 0xFF526B7E),
     VisualStyle.notebook => tone(0xFFCFC3AC, 0xFF716958),
     VisualStyle.midnight => const Color(0xFF455A76),
+    VisualStyle.moss => tone(0xFFC8D2C2, 0xFF536455),
+    VisualStyle.clay => tone(0xFFE1CFC4, 0xFF755D50),
+    VisualStyle.graphite => const Color(0xFF3C4341),
     _ => tone(0xFFE5DFE7, 0xFF3F3943),
   };
   Color get accent => switch (style) {
     VisualStyle.powderBlue => tone(0xFF244E6D, 0xFFB7D9F1),
     VisualStyle.notebook => tone(0xFF55432B, 0xFFE3C895),
     VisualStyle.midnight => const Color(0xFFC1DCFF),
+    VisualStyle.moss => tone(0xFF315B3A, 0xFFB4D9B7),
+    VisualStyle.clay => tone(0xFF8E402C, 0xFFF3B89C),
+    VisualStyle.graphite => const Color(0xFFD5BA78),
     _ => tone(0xFF5B315D, 0xFFE9CCE6),
   };
   Color get onAccent => switch (style) {
     VisualStyle.powderBlue => tone(0xFFFFFFFF, 0xFF122B3D),
     VisualStyle.notebook => tone(0xFFFFFFFF, 0xFF302519),
     VisualStyle.midnight => const Color(0xFF10233D),
+    VisualStyle.moss => tone(0xFFFFFFFF, 0xFF203527),
+    VisualStyle.clay => tone(0xFFFFFFFF, 0xFF3A241E),
+    VisualStyle.graphite => const Color(0xFF252117),
     _ => tone(0xFFFFFFFF, 0xFF322235),
   };
   Color get tint => switch (style) {
     VisualStyle.powderBlue => tone(0xFFD8EAF6, 0xFF304F66),
     VisualStyle.notebook => tone(0xFFEDE1CA, 0xFF4B4030),
     VisualStyle.midnight => const Color(0xFF243D5B),
+    VisualStyle.moss => tone(0xFFDFE9DD, 0xFF34483A),
+    VisualStyle.clay => tone(0xFFF2DFD5, 0xFF5A4035),
+    VisualStyle.graphite => const Color(0xFF3B382E),
     _ => tone(0xFFF0E8F1, 0xFF382E3C),
   };
   double get cardRadius => switch (style) {
     VisualStyle.powderBlue => 28,
     VisualStyle.notebook || VisualStyle.midnight => 12,
+    VisualStyle.moss => 16,
+    VisualStyle.clay => 18,
+    VisualStyle.graphite => 12,
     _ => 20,
   };
   double get controlRadius => switch (style) {
     VisualStyle.powderBlue => 24,
     VisualStyle.notebook || VisualStyle.midnight => 10,
+    VisualStyle.moss => 14,
+    VisualStyle.clay => 16,
+    VisualStyle.graphite => 9,
     _ => 16,
   };
   double get sheetRadius => switch (style) {
     VisualStyle.powderBlue => 34,
     VisualStyle.notebook => 18,
     VisualStyle.midnight => 16,
+    VisualStyle.moss => 24,
+    VisualStyle.clay => 24,
+    VisualStyle.graphite => 14,
     _ => 30,
   };
   double get navRadius => switch (style) {
     VisualStyle.powderBlue => 30,
     VisualStyle.notebook || VisualStyle.midnight => 14,
+    VisualStyle.moss => 20,
+    VisualStyle.clay => 22,
+    VisualStyle.graphite => 12,
     _ => 26,
   };
   double get surfaceBorderWidth => switch (style) {
@@ -101,6 +137,9 @@ class Palette {
     VisualStyle.powderBlue => 1,
     VisualStyle.notebook => 1.15,
     VisualStyle.midnight => 1.2,
+    VisualStyle.moss => 1,
+    VisualStyle.clay => .9,
+    VisualStyle.graphite => 1.2,
   };
   Color get surfaceEdge =>
       style == VisualStyle.original ? tone(0xFFE4DED8, 0xFF3F3943) : line;
@@ -110,6 +149,10 @@ class Palette {
       ? 13
       : style == VisualStyle.powderBlue
       ? 18
+      : style == VisualStyle.moss
+      ? 12
+      : style == VisualStyle.clay
+      ? 10
       : 8;
   Border? get border =>
       style == VisualStyle.original ? null : Border.all(color: line);
@@ -138,6 +181,15 @@ class SurfaceDetail extends CustomPainter {
         canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
       }
       canvas.drawLine(const Offset(12, 0), Offset(12, size.height), paint);
+    } else if (palette.style == VisualStyle.moss) {
+      paint.strokeWidth = 1;
+      canvas.drawArc(
+        Rect.fromLTWH(size.width - 42, 8, 28, 28),
+        .25,
+        2.1,
+        false,
+        paint,
+      );
     }
   }
 
@@ -202,6 +254,9 @@ TextStyle textStyle(
     VisualStyle.powderBlue => size >= 28 ? -.6 : -.1,
     VisualStyle.notebook => 0,
     VisualStyle.midnight => size >= 28 ? -.7 : -.15,
+    VisualStyle.moss => size >= 28 ? -.5 : 0,
+    VisualStyle.clay => size >= 28 ? -.6 : -.05,
+    VisualStyle.graphite => size >= 28 ? -.7 : -.1,
   },
   fontFeatures: tabular ? const [FontFeature.tabularFigures()] : null,
 );
@@ -1137,8 +1192,13 @@ class EntryRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final category = ledger.category(entry.categoryId);
+    final loan = entry.loanId == null ? null : ledger.loan(entry.loanId!);
     final transfer = entry.kind == EntryKind.transfer;
-    final title = entry.adjustment != null
+    final title = loan != null
+        ? entry.loanAction == LoanAction.issued
+              ? 'Loan to ${loan.borrower}'
+              : 'Repayment from ${loan.borrower}'
+        : entry.adjustment != null
         ? 'Balance adjustment'
         : transfer
         ? '${ledger.wallet(entry.wallet)!.label} → ${ledger.wallet(entry.toWallet)!.label}'
@@ -1160,7 +1220,9 @@ class EntryRow extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: transfer
+              color: loan != null
+                  ? p.blueTint
+                  : transfer
                   ? p.blueTint
                   : entry.kind == EntryKind.income
                   ? p.greenTint
@@ -1171,13 +1233,17 @@ class EntryRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(p.badgeRadius),
             ),
             child: Icon(
-              entry.adjustment != null
+              loan != null
+                  ? CupertinoIcons.person
+                  : entry.adjustment != null
                   ? CupertinoIcons.money_dollar_circle
                   : transfer
                   ? CupertinoIcons.arrow_right_arrow_left
                   : categoryIcon(category?.icon),
               size: 21,
-              color: transfer
+              color: loan != null
+                  ? p.blue
+                  : transfer
                   ? p.blue
                   : entry.kind == EntryKind.income
                   ? p.green
