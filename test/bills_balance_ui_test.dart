@@ -48,6 +48,120 @@ void main() {
   );
 
   testWidgets(
+    'Safe to spend shows reserved dates, breakdown, and direct routes',
+    (tester) async {
+      configure(tester, const Size(320, 640), scale: 1.5);
+      final weekly = data.bill.copy(
+        startDate: '2026-10-05',
+        frequency: BillFrequency.weekly,
+      );
+      final app = data.controller(data.fixture().copy(bills: [weekly]));
+      await tester.pumpWidget(launch(app, SafeToSpendCard(app: app)));
+      await tester.tap(find.text('Open feature'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('safe-to-spend-card')), findsOneWidget);
+      expect(find.text('₱100.00'), findsOneWidget);
+      expect(
+        find.textContaining('₱200.00 set aside for 4 due or overdue'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('safe-to-spend-details')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('safe-to-spend-breakdown')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<ListView>(
+              find.byKey(const ValueKey('safe-to-spend-breakdown')),
+            )
+            .childrenDelegate
+            .estimatedChildCount,
+        4,
+      );
+      await tester.tap(find.text('View all bills'));
+      await tester.pumpAndSettle();
+      expect(find.byType(BillsPage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Bill deletion confirms wallet credits and one Undo restores it',
+    (tester) async {
+      configure(tester, const Size(390, 844));
+      final plan = data.bill.copy(paymentCount: 2);
+      final ledger = data
+          .fixture()
+          .copy(bills: [plan])
+          .put(data.billPayment(plan, plan.startDate, Wallet.cash))
+          .put(data.billPayment(plan, plan.occurrence(1)!, Wallet.gcash));
+      final app = data.controller(ledger);
+      await tester.pumpWidget(
+        launch(app, BillEditorPage(app: app, bill: plan)),
+      );
+      await tester.tap(find.text('Open feature'));
+      await tester.pumpAndSettle();
+      for (
+        var attempt = 0;
+        attempt < 6 &&
+            find.byKey(const ValueKey('bill-delete')).evaluate().isEmpty;
+        attempt++
+      ) {
+        await tester.drag(find.byType(ListView).last, const Offset(0, -420));
+        await tester.pumpAndSettle();
+      }
+      expect(find.byKey(const ValueKey('bill-delete')), findsOneWidget);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('bill-delete')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Cash: +₱50.00'), findsOneWidget);
+      expect(find.textContaining('GCash: +₱50.00'), findsOneWidget);
+      await tester.tap(find.text('Delete bill and reverse payments'));
+      await tester.pumpAndSettle();
+
+      expect(app.ledger.bill(plan.id)!.deleted, isTrue);
+      expect(app.ledger.calculate(Wallet.cash).balance, 10000);
+      expect(app.ledger.calculate(Wallet.gcash).balance, 20000);
+      expect(find.text('Undo'), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(app.ledger.bill(plan.id)!.deleted, isFalse);
+      expect(app.ledger.calculate(Wallet.cash).balance, 5000);
+      expect(app.ledger.calculate(Wallet.gcash).balance, 15000);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'No-due Safe to spend card stays compact and has no fake amount',
+    (tester) async {
+      configure(tester, const Size(320, 640), scale: 1.5);
+      final app = data.controller(data.fixture());
+      await tester.pumpWidget(launch(app, SafeToSpendCard(app: app)));
+      await tester.tap(find.text('Open feature'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('safe-to-spend-details')), findsNothing);
+      expect(find.text('₱300.00'), findsOneWidget);
+      expect(
+        find.textContaining('No unpaid bill payments due'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('safe-to-spend-add-bill')));
+      await tester.pumpAndSettle();
+      expect(find.byType(BillEditorPage), findsOneWidget);
+      expect(find.text('Add bill'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'Balance comparison and cancelled confirmation never save an adjustment',
     (tester) async {
       configure(tester, const Size(390, 844));
@@ -252,6 +366,55 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Bill progress bar fills and recomputes after save and Undo', (
+    tester,
+  ) async {
+    configure(tester, const Size(390, 844));
+    final plan = data.bill.copy(paymentCount: 2);
+    final ledger = data
+        .fixture()
+        .copy(bills: [plan])
+        .put(data.billPayment(plan, plan.occurrence(0)!, Wallet.cash));
+    final app = data.controller(ledger);
+    await tester.pumpWidget(
+      PocketApp(
+        controller: app,
+        testHome: BillsPage(app: app),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final track = find.byKey(ValueKey('bill-progress-track-${plan.id}'));
+    final fill = find.byKey(ValueKey('bill-progress-fill-${plan.id}'));
+    expect(track, findsOneWidget);
+    expect(fill, findsOneWidget);
+    expect(
+      tester.getSize(fill).width,
+      closeTo(tester.getSize(track).width / 2, 1),
+    );
+
+    expect(
+      await app.recordBillPayment(
+        plan,
+        plan.occurrence(1)!,
+        Wallet.cash,
+        app.ledger.category('bills')!,
+        confirmed: true,
+      ),
+      isTrue,
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getSize(fill).width, closeTo(tester.getSize(track).width, 1));
+
+    expect(await app.undo(), isTrue);
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(fill).width,
+      closeTo(tester.getSize(track).width / 2, 1),
+    );
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'Existing Undo ignores rapid or stale taps instead of reversing an older entry',

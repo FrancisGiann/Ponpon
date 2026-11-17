@@ -111,7 +111,7 @@ void main() {
     (tester) async {
       configure(tester, const Size(390, 844));
       await showSettings(tester, controller());
-      expect(calls.map((c) => c.method), ['reminderState']);
+      expect(calls.map((c) => c.method), ['reminderState', 'appVersion']);
       await tester.tap(toggle());
       await tester.pumpAndSettle();
       expect(find.text('Reminder time'), findsOneWidget);

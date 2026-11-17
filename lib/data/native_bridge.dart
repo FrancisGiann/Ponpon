@@ -30,6 +30,7 @@ class ReminderState {
 class NativeBridge {
   const NativeBridge();
   static const channel = MethodChannel('dev.giann.pocket_entry/native');
+  Future<String?> appVersion() => channel.invokeMethod<String>('appVersion');
   Future<String> privatePath() async =>
       (await channel.invokeMethod<String>('privatePath'))!;
   Future<Map<dynamic, dynamic>?> initialEntry() =>

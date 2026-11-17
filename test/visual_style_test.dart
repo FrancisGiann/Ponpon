@@ -40,6 +40,16 @@ void main() {
         mode,
       );
     }
+    for (final mode in ['light', 'dark', 'system']) {
+      final preferences = Preferences(theme: mode)
+          .copy(visualStyle: VisualStyle.graphite);
+      expect(preferences.effectiveTheme, 'dark');
+      final loaded = Preferences.fromJson(preferences.toJson());
+      expect(
+        loaded.copy(visualStyle: VisualStyle.original).effectiveTheme,
+        mode,
+      );
+    }
   });
   test('Native appearance follows style without changing amounts or widget privacy', () async {
     final messenger =
@@ -66,7 +76,10 @@ void main() {
       final payload = Map<String, dynamic>.from(calls[i].arguments as Map);
       expect(
         payload.remove('theme'),
-        VisualStyle.values[i] == VisualStyle.midnight ? 'dark' : 'light',
+        VisualStyle.values[i] == VisualStyle.midnight ||
+                VisualStyle.values[i] == VisualStyle.graphite
+            ? 'dark'
+            : 'light',
       );
       expect(payload.remove('visualStyle'), VisualStyle.values[i].name);
       expect(payload, original);
@@ -119,38 +132,54 @@ void main() {
           openings: {Wallet.cash: 1234567, Wallet.gcash: 0},
           preferences: app.ledger.preferences.copy(balanceWidgetVisible: true),
         );
-        await tester.pumpWidget(PocketApp(
-          controller: app,
-          testHome: Center(child: RepaintBoundary(
-            key: key,
-            child: SizedBox(width: 300, child: WideWidgetPreview(ledger: shown)),
-          )),
-        ));
+        await tester.pumpWidget(
+          PocketApp(
+            controller: app,
+            testHome: Center(
+              child: RepaintBoundary(
+                key: key,
+                child: SizedBox(
+                  width: 300,
+                  child: WideWidgetPreview(ledger: shown),
+                ),
+              ),
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
         expect(find.text('₱12,345.67'), findsOneWidget);
         expect(tester.takeException(), isNull);
-        await capture(tester, key, '029-wide-preview-shown-${style.name}-$theme');
+        await capture(
+          tester,
+          key,
+          '029-wide-preview-shown-${style.name}-$theme',
+        );
       });
       testWidgets('History shows entries above the fold in $style $theme', (
         tester,
       ) async {
         configure(tester, const Size(390, 844));
         final base = synthetic(theme: theme);
-        final app = fixture(base.copy(
-          preferences: base.preferences.copy(visualStyle: style),
-        ));
+        final app = fixture(
+          base.copy(preferences: base.preferences.copy(visualStyle: style)),
+        );
         addTearDown(app.dispose);
         final key = GlobalKey();
-        await tester.pumpWidget(RepaintBoundary(
-          key: key,
-          child: PocketApp(
-            controller: app,
-            testHome: HomeShell(app: app, initialTab: 1),
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: key,
+            child: PocketApp(
+              controller: app,
+              testHome: HomeShell(app: app, initialTab: 1),
+            ),
           ),
-        ));
+        );
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('history-filters')), findsOneWidget);
-        expect(tester.getTopLeft(find.byType(EntryRow).first).dy, lessThan(500));
+        expect(
+          tester.getTopLeft(find.byType(EntryRow).first).dy,
+          lessThan(500),
+        );
         expect(tester.takeException(), isNull);
         await capture(tester, key, '029-history-compact-${style.name}-$theme');
       });
@@ -217,7 +246,9 @@ void main() {
         expect(restored.preferences.theme, ledger.preferences.theme);
         expect(
           restored.preferences.effectiveTheme,
-          style == VisualStyle.midnight ? 'dark' : 'light',
+          style == VisualStyle.midnight || style == VisualStyle.graphite
+              ? 'dark'
+              : 'light',
         );
       },
     );
@@ -440,7 +471,12 @@ void main() {
     }
     for (final dark in [false, true]) {
       test('$style $dark readable text contrast', () {
-        final p = Palette(dark || style == VisualStyle.midnight, style);
+        final p = Palette(
+          dark ||
+              style == VisualStyle.midnight ||
+              style == VisualStyle.graphite,
+          style,
+        );
         double contrast(Color a, Color b) {
           final x = a.computeLuminance(), y = b.computeLuminance();
           return ((x > y ? x : y) + .05) / ((x < y ? x : y) + .05);
@@ -522,7 +558,7 @@ void main() {
         final target = find.byKey(ValueKey('style-${style.name}'));
         await tester.scrollUntilVisible(
           target,
-          style == VisualStyle.midnight ? 400 : -400,
+          style == VisualStyle.adventure ? 400 : -400,
           scrollable: find.byType(Scrollable).first,
         );
         await tester.ensureVisible(target);
@@ -535,7 +571,9 @@ void main() {
             .theme!;
         expect(
           theme.brightness,
-          style == VisualStyle.midnight ? Brightness.dark : Brightness.light,
+          style == VisualStyle.midnight || style == VisualStyle.graphite
+              ? Brightness.dark
+              : Brightness.light,
         );
         expect(app.ledger.preferences.theme, 'light');
         final after = jsonDecode(app.ledger.encode()) as Map

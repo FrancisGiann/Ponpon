@@ -17,6 +17,312 @@ Future<void> showBillSchedule(
   builder: (_) => _BillScheduleSheet(bill: bill, ledger: ledger, now: now),
 );
 
+Future<void> showSafeToSpendDetails(
+  BuildContext context,
+  AppController app,
+  SafeToSpendSummary summary,
+) => showPocketSheet<void>(
+  context: context,
+  builder: (_) => _SafeToSpendSheet(app: app, summary: summary),
+);
+
+class SafeToSpendCard extends StatelessWidget {
+  const SafeToSpendCard({super.key, required this.app});
+  final AppController app;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final summary = app.ledger.safeToSpend(app.clock());
+    final nearest = summary.nearestDueDate;
+    final dueSubtitle = summary.duePaymentCount == 0
+        ? 'No unpaid bill payments due through ${shortDate(dayKey(summary.throughDate))}.'
+        : '${money(summary.dueCentavos)} set aside for ${summary.duePaymentCount} due or overdue ${summary.duePaymentCount == 1 ? 'payment' : 'payments'} · ${nearest == null
+              ? ''
+              : nearest.compareTo(dayKey(app.clock())) < 0
+              ? 'oldest overdue'
+              : 'next due'} ${nearest == null ? '' : shortDate(nearest)}';
+    final subtitle = summary.activeWalletCount == 0
+        ? 'No active wallets · $dueSubtitle'
+        : dueSubtitle;
+    final cardContent = Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 12, 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(CupertinoIcons.calendar, color: p.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Safe to spend',
+                  style: textStyle(context, size: 16, weight: FontWeight.w700),
+                ),
+              ),
+              Press(
+                key: const ValueKey('safe-to-spend-add-bill'),
+                label: 'Add bill',
+                onPressed: app.busy
+                    ? null
+                    : () => pushPocket<void>(context, BillEditorPage(app: app)),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(CupertinoIcons.add, size: 15, color: p.accent),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Add bill',
+                      style: textStyle(context, size: 13, color: p.accent),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 1),
+          Semantics(
+            key: const ValueKey('safe-to-spend-amount-semantics'),
+            label: summary.safeCentavos == null
+                ? 'No active wallets'
+                : summary.safeCentavos! < 0
+                ? 'Shortfall ${money(summary.safeCentavos!.abs())}'
+                : money(summary.safeCentavos!),
+            child: ExcludeSemantics(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  summary.safeCentavos == null
+                      ? '—'
+                      : money(summary.safeCentavos!),
+                  key: const ValueKey('safe-to-spend-amount'),
+                  maxLines: 1,
+                  style: textStyle(
+                    context,
+                    size: 28,
+                    weight: FontWeight.w700,
+                    tabular: true,
+                    color: (summary.safeCentavos ?? 0) < 0 ? p.danger : p.ink,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            summary.safeCentavos != null && summary.safeCentavos! < 0
+                ? 'Shortfall after scheduled bills · $subtitle'
+                : subtitle,
+            key: const ValueKey('safe-to-spend-subtitle'),
+            style: textStyle(context, size: 12, color: p.secondary),
+          ),
+          if (summary.duePaymentCount > 0)
+            Press(
+              key: const ValueKey('safe-to-spend-details'),
+              label: 'View safe to spend breakdown',
+              onPressed: () => showSafeToSpendDetails(context, app, summary),
+              padding: const EdgeInsets.only(top: 6, bottom: 1),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'View breakdown',
+                      style: textStyle(context, size: 13, color: p.accent),
+                    ),
+                  ),
+                  Icon(CupertinoIcons.chevron_right, size: 14, color: p.accent),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (p.adventure) {
+      return PixelFrame(
+        key: const ValueKey('safe-to-spend-card'),
+        fillColor: p.surface,
+        child: cardContent,
+      );
+    }
+    return Surface(
+      key: const ValueKey('safe-to-spend-card'),
+      padding: EdgeInsets.zero,
+      child: cardContent,
+    );
+  }
+}
+
+class _SafeToSpendSheet extends StatelessWidget {
+  const _SafeToSpendSheet({required this.app, required this.summary});
+  final AppController app;
+  final SafeToSpendSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return SheetFrame(
+      title: 'Safe to spend',
+      subtitle: 'Bills due through ${shortDate(dayKey(summary.throughDate))}',
+      height: 660,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Surface(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    summary.safeCentavos == null
+                        ? 'No active wallets'
+                        : summary.safeCentavos! < 0
+                        ? 'Shortfall ${money(summary.safeCentavos!.abs())}'
+                        : money(summary.safeCentavos!),
+                    key: const ValueKey('safe-to-spend-sheet-amount'),
+                    style: textStyle(
+                      context,
+                      size: 26,
+                      weight: FontWeight.w700,
+                      tabular: true,
+                      color: (summary.safeCentavos ?? 0) < 0 ? p.danger : p.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${money(summary.walletBalanceCentavos)} active wallet balance · ${money(summary.dueCentavos)} scheduled',
+                    style: textStyle(context, size: 12, color: p.secondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (summary.duePaymentCount == 0)
+            Expanded(
+              child: Center(
+                child: Text(
+                  'No unpaid bill payments in this date range.',
+                  style: textStyle(context, size: 14, color: p.secondary),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: ListView.builder(
+                key: const ValueKey('safe-to-spend-breakdown'),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                itemCount: summary.duePaymentCount,
+                itemBuilder: (context, index) {
+                  final due = summary.occurrenceAt(index);
+                  final overdue =
+                      due.dueDate.compareTo(dayKey(app.clock())) < 0;
+                  return GroupRow(
+                    due.bill.name,
+                    subtitle:
+                        '${overdue ? 'Overdue' : 'Due'} ${shortDate(due.dueDate)}',
+                    trailing: Text(
+                      money(due.centavos),
+                      style: textStyle(
+                        context,
+                        size: 14,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: SecondaryButton(
+              'View all bills',
+              icon: CupertinoIcons.calendar,
+              onPressed: () {
+                Navigator.pop(context);
+                pushPocket<void>(context, BillsPage(app: app));
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BillInstallmentProgress extends StatelessWidget {
+  const BillInstallmentProgress({
+    super.key,
+    required this.bill,
+    required this.ledger,
+    this.onTap,
+  });
+  final Bill bill;
+  final Ledger ledger;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = bill.paymentCount;
+    if (count == null) return const SizedBox.shrink();
+    final p = Palette.of(context);
+    final paid = bill.paidInstallments(ledger).clamp(0, count);
+    final value = (paid / count).clamp(0.0, 1.0).toDouble();
+    final remaining = bill.remainingCentavos(ledger);
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$paid/$count installments paid · ${money(remaining)} remaining',
+                style: textStyle(context, size: 13, color: p.secondary),
+              ),
+            ),
+            if (onTap != null)
+              Icon(CupertinoIcons.chevron_right, color: p.secondary, size: 14),
+          ],
+        ),
+        const SizedBox(height: 7),
+        Semantics(
+          label: '$paid of $count installments paid',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                children: [
+                  SizedBox(
+                    key: ValueKey('bill-progress-track-${bill.id}'),
+                    width: constraints.maxWidth,
+                    height: 8,
+                    child: ColoredBox(color: p.line),
+                  ),
+                  SizedBox(
+                    key: ValueKey('bill-progress-fill-${bill.id}'),
+                    width: constraints.maxWidth * value,
+                    height: 8,
+                    child: ColoredBox(color: p.accent),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    if (onTap == null) return content;
+    return Press(
+      label:
+          'View payment schedule, $paid of $count installments paid, ${money(remaining)} remaining',
+      onPressed: onTap,
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: content,
+    );
+  }
+}
+
 class _BillScheduleSheet extends StatelessWidget {
   const _BillScheduleSheet({
     required this.bill,
@@ -40,8 +346,15 @@ class _BillScheduleSheet extends StatelessWidget {
       height: 600,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-        itemCount: count,
+        itemCount: count + (bill.paymentCount == null ? 0 : 1),
         itemBuilder: (context, index) {
+          if (bill.paymentCount != null && index == 0) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: BillInstallmentProgress(bill: bill, ledger: ledger),
+            );
+          }
+          if (bill.paymentCount != null) index--;
           final due = bill.occurrence(index);
           if (due == null) return const SizedBox.shrink();
           final isPaid = paidDates.contains(due);
@@ -261,13 +574,14 @@ class BillsPage extends StatelessWidget {
     animation: app,
     builder: (context, _) {
       final p = Palette.of(context);
+      final liveBills = app.ledger.bills
+          .where((bill) => !bill.deleted)
+          .toList();
       final pending = [
-        for (final bill in app.ledger.bills)
+        for (final bill in liveBills)
           if (bill.nextDue(app.ledger) case final String due) (bill, due),
       ]..sort((a, b) => a.$2.compareTo(b.$2));
-      final inactive = app.ledger.bills.where(
-        (b) => b.nextDue(app.ledger) == null,
-      );
+      final inactive = liveBills.where((b) => b.nextDue(app.ledger) == null);
       String inactiveSubtitle(Bill bill) {
         if (!bill.enabled) return 'Paused';
         final count = bill.paymentCount;
@@ -299,7 +613,7 @@ class BillsPage extends StatelessWidget {
               style: textStyle(context, size: 15, color: p.secondary),
             ),
             const SizedBox(height: 20),
-            if (app.ledger.bills.isEmpty)
+            if (liveBills.isEmpty)
               const QuietMessage(
                 'No bills yet',
                 'Add a due date and choose how often it repeats.',
@@ -332,36 +646,16 @@ class BillsPage extends StatelessWidget {
                       '${due.compareTo(dayKey(app.clock())) < 0 ? 'Overdue' : 'Due'} ${shortDate(due)} · ${billFrequencyLabel(bill.frequency)}',
                       style: textStyle(context, size: 14, color: p.secondary),
                     ),
-                    if (bill.paymentCount case final int count) ...[
+                    if (bill.paymentCount != null) ...[
                       const SizedBox(height: 6),
-                      Press(
-                        label:
-                            'View payment schedule, ${bill.paidInstallments(app.ledger)} of $count installments paid, ${money(bill.remainingCentavos(app.ledger))} remaining',
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        onPressed: () => showBillSchedule(
+                      BillInstallmentProgress(
+                        bill: bill,
+                        ledger: app.ledger,
+                        onTap: () => showBillSchedule(
                           context,
                           bill,
                           app.ledger,
                           now: app.clock(),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '${bill.paidInstallments(app.ledger)}/$count installments paid · ${money(bill.remainingCentavos(app.ledger))} remaining',
-                                style: textStyle(
-                                  context,
-                                  size: 14,
-                                  color: p.secondary,
-                                ),
-                              ),
-                            ),
-                            Icon(
-                              CupertinoIcons.chevron_right,
-                              color: p.secondary,
-                              size: 14,
-                            ),
-                          ],
                         ),
                       ),
                     ],
@@ -393,49 +687,61 @@ class BillsPage extends StatelessWidget {
               ),
               const SizedBox(height: 16),
             ],
-            if (inactive.isNotEmpty)
+            for (final bill in inactive) ...[
               Surface(
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    for (final bill in inactive)
-                      GroupRow(
-                        bill.name,
-                        last: bill == inactive.last,
-                        subtitle: inactiveSubtitle(bill),
-                        icon: CupertinoIcons.calendar,
-                        trailing: bill.paymentCount == null
+                    GroupRow(
+                      bill.name,
+                      subtitle: inactiveSubtitle(bill),
+                      icon: CupertinoIcons.calendar,
+                      trailing: Press(
+                        label: 'Edit ${bill.name}',
+                        padding: const EdgeInsets.all(10),
+                        onPressed: app.busy
                             ? null
-                            : Press(
-                                label: 'Edit ${bill.name}',
-                                padding: const EdgeInsets.all(10),
-                                onPressed: app.busy
-                                    ? null
-                                    : () => pushPocket<void>(
-                                        context,
-                                        BillEditorPage(app: app, bill: bill),
-                                      ),
-                                child: Icon(
-                                  CupertinoIcons.pencil,
-                                  color: p.secondary,
-                                  size: 18,
-                                ),
-                              ),
-                        onTap: bill.paymentCount == null
-                            ? () => pushPocket<void>(
+                            : () => pushPocket<void>(
                                 context,
                                 BillEditorPage(app: app, bill: bill),
-                              )
-                            : () => showBillSchedule(
-                                context,
-                                bill,
-                                app.ledger,
-                                now: app.clock(),
                               ),
+                        child: Icon(
+                          CupertinoIcons.pencil,
+                          color: p.secondary,
+                          size: 18,
+                        ),
+                      ),
+                      onTap: bill.paymentCount == null
+                          ? () => pushPocket<void>(
+                              context,
+                              BillEditorPage(app: app, bill: bill),
+                            )
+                          : () => showBillSchedule(
+                              context,
+                              bill,
+                              app.ledger,
+                              now: app.clock(),
+                            ),
+                    ),
+                    if (bill.paymentCount != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(18, 0, 18, 14),
+                        child: BillInstallmentProgress(
+                          bill: bill,
+                          ledger: app.ledger,
+                          onTap: () => showBillSchedule(
+                            context,
+                            bill,
+                            app.ledger,
+                            now: app.clock(),
+                          ),
+                        ),
                       ),
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+            ],
             const SizedBox(height: 16),
             SecondaryButton(
               'Add a bill',
@@ -474,6 +780,7 @@ class _BillEditorState extends State<BillEditorPage> {
   late bool enabled = widget.bill?.enabled ?? true,
       remind = widget.bill?.remind ?? false;
   bool permissionBusy = false;
+  bool deletionBusy = false;
   String? error;
   bool get hasHistory => widget.app.ledger.entries.any((e) => e.billId == id);
   String? get countPreviewDate {
@@ -565,7 +872,7 @@ class _BillEditorState extends State<BillEditorPage> {
           remind: remind,
         ).toJson(),
       );
-      final saved = await widget.app.setBill(bill);
+      final saved = await widget.app.setBill(bill, reviewed: widget.bill);
       if (!mounted) return;
       if (saved) {
         Navigator.pop(context);
@@ -574,6 +881,52 @@ class _BillEditorState extends State<BillEditorPage> {
       }
     } on LedgerException catch (e) {
       setState(() => error = e.message);
+    }
+  }
+
+  Future<void> deleteBill() async {
+    final reviewed = widget.bill;
+    if (reviewed == null || widget.app.busy || deletionBusy) return;
+    final ledger = widget.app.ledger;
+    final current = ledger.bill(reviewed.id);
+    if (current == null || !sameBill(current, reviewed)) {
+      setState(() => error = 'This bill changed. Reopen it before deleting.');
+      return;
+    }
+    final payments = ledger.entries
+        .where((entry) => entry.billId == current.id && !entry.deleted)
+        .toList();
+    final credits = <Wallet, int>{};
+    for (final payment in payments) {
+      credits.update(
+        payment.wallet,
+        (amount) => amount + payment.centavos,
+        ifAbsent: () => payment.centavos,
+      );
+    }
+    final creditLines = credits.entries
+        .map((item) => '${item.key.label}: +${money(item.value)}')
+        .join('\n');
+    final message = payments.isEmpty
+        ? 'This bill has no active recorded payments. Its payment history will stay in the backup and the deletion can be undone.'
+        : 'This will reverse ${payments.length} active ${payments.length == 1 ? 'payment' : 'payments'} and credit the tracked wallet balances:\n$creditLines\n\nThe linked history is kept and the whole deletion can be undone.';
+    setState(() => deletionBusy = true);
+    final approved = await confirm(
+      context,
+      title: 'Delete this bill?',
+      message: message,
+      action: 'Delete bill and reverse payments',
+      destructive: true,
+    );
+    if (!mounted) return;
+    setState(() => deletionBusy = false);
+    if (!approved) return;
+    final deleted = await widget.app.deleteBill(current, payments);
+    if (!mounted) return;
+    if (deleted) {
+      Navigator.pop(context);
+    } else {
+      setState(() => error = widget.app.storageError);
     }
   }
 
@@ -706,8 +1059,32 @@ class _BillEditorState extends State<BillEditorPage> {
             ErrorLine(error),
             PrimaryButton(
               'Save bill',
-              onPressed: app.busy || permissionBusy ? null : save,
+              onPressed: app.busy || permissionBusy || deletionBusy
+                  ? null
+                  : save,
             ),
+            if (widget.bill != null) ...[
+              const SizedBox(height: 12),
+              Press(
+                key: const ValueKey('bill-delete'),
+                label: 'Delete bill and reverse recorded payments',
+                onPressed: app.busy || permissionBusy || deletionBusy
+                    ? null
+                    : deleteBill,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                child: Center(
+                  child: Text(
+                    'Delete bill',
+                    style: textStyle(
+                      context,
+                      size: 16,
+                      weight: FontWeight.w600,
+                      color: p.danger,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       );

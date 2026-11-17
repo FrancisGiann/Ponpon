@@ -73,6 +73,11 @@ class MainActivity : FlutterActivity() {
         channel = MethodChannel(engine.dartExecutor.binaryMessenger, "dev.giann.pocket_entry/native")
         channel!!.setMethodCallHandler { call, result ->
             when (call.method) {
+                "appVersion" -> {
+                    @Suppress("DEPRECATION")
+                    val version = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { null }
+                    result.success(version)
+                }
                 "setPrivatePreview" -> {
                     if (call.argument<Boolean>("enabled") == true) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
                     result.success(null)

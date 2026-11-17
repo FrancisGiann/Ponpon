@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'data/native_bridge.dart';
 import 'data/storage.dart';
 import 'data/coordinated_store.dart';
+import 'domain/adventure.dart';
 import 'domain/ledger.dart';
 import 'domain/transfer_preview.dart';
 
@@ -28,10 +29,48 @@ class AppController extends ChangeNotifier {
   Future<void> _draftQueue = Future.value();
   String? _pendingDraft;
   bool _writingDraft = false;
-  String? feedback;
+  String? _feedback;
+  int _feedbackSequence = 0;
+  String? get feedback => _feedback;
+  int get feedbackId => _feedbackSequence;
+  set feedback(String? value) {
+    _feedback = value;
+    _feedbackSequence++;
+  }
+
   bool feedbackUndo = false;
   bool entryVisible = false;
+  bool repeatOpening = false;
+  String? celebratedLoanId;
+  AdventureRewardEvent? adventureReward;
+  int _adventureRewardSequence = 0;
   void publish() => notifyListeners();
+
+  void showAdventureReward(AdventureRewardKind kind, {AdventureBadge? badge}) {
+    if (ledger.preferences.visualStyle != VisualStyle.adventure) return;
+    adventureReward = AdventureRewardEvent(
+      id: ++_adventureRewardSequence,
+      kind: kind,
+      badge: badge,
+    );
+    notifyListeners();
+  }
+
+  void clearAdventureReward(int id) {
+    if (adventureReward?.id == id) {
+      adventureReward = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _hapticIfEnabled() async {
+    if (!ledger.preferences.haptics) return;
+    try {
+      await HapticFeedback.lightImpact();
+    } catch (_) {
+      // A committed ledger action must not fail when the platform has no haptics.
+    }
+  }
 
   Future<void> initialize() async {
     final result = await store.load();
@@ -51,8 +90,10 @@ class AppController extends ChangeNotifier {
     } on LedgerException catch (e) {
       notice = e.message;
     }
+    _normalizeRepeatDraftReferences();
     if (draft?.kind == EntryKind.income &&
         draft?.editingId == null &&
+        draft?.repeatEntry != true &&
         !ledger
             .categoriesFor(EntryKind.income)
             .any((c) => c.id == draft!.categoryId)) {
@@ -109,8 +150,10 @@ class AppController extends ChangeNotifier {
       if (loaded.ledger.encode() != ledger.encode()) {
         feedback = null;
         feedbackUndo = false;
+        adventureReward = null;
       }
       ledger = loaded.ledger;
+      _normalizeRepeatDraftReferences();
       notice ??= loaded.notice;
       await _sync();
     } catch (_) {
@@ -140,6 +183,8 @@ class AppController extends ChangeNotifier {
     feedbackUndo = false;
     try {
       ledger = (await store.load()).ledger;
+      adventureReward = null;
+      _normalizeRepeatDraftReferences();
       await _sync();
     } catch (_) {
       /* A failed read never authorizes replacing unreadable files. */
@@ -170,12 +215,96 @@ class AppController extends ChangeNotifier {
     updateDraft();
   }
 
+  Entry? repeatableEntry(String sourceId) {
+    final source = ledger.entry(sourceId);
+    if (source == null ||
+        source.deleted ||
+        source.adjustment != null ||
+        source.kind == EntryKind.transfer) {
+      return null;
+    }
+    return source;
+  }
+
+  bool startRepeatDraft(String sourceId) {
+    if (busy || draft?.dirty == true) return false;
+    final source = repeatableEntry(sourceId);
+    if (source == null) return false;
+    final category = _repeatCategory(
+      source.kind,
+      source.categoryId,
+      requireStored: true,
+    );
+    final wallet = ledger.availableWallets
+        .where((candidate) => candidate == source.wallet)
+        .firstOrNull;
+    draft = Draft(
+      amount: moneyInput(source.centavos),
+      kind: source.kind,
+      date: dayKey(clock().toLocal()),
+      categoryId: category?.id,
+      note: source.note,
+      repeatEntry: true,
+      repeatCategoryExplicit: false,
+      preferredWallet: wallet,
+    );
+    updateDraft();
+    notifyListeners();
+    return true;
+  }
+
+  Category? _repeatCategory(
+    EntryKind kind,
+    String? categoryId, {
+    bool requireStored = false,
+  }) {
+    if (kind == EntryKind.transfer || categoryId == null) return null;
+    final stored = ledger.category(categoryId);
+    if ((requireStored && stored == null) ||
+        (stored != null &&
+            (stored.archived ||
+                stored.isIncome != (kind == EntryKind.income)))) {
+      return null;
+    }
+    return ledger
+        .categoriesFor(kind)
+        .where((candidate) => candidate.id == categoryId)
+        .firstOrNull;
+  }
+
+  void _normalizeRepeatDraftReferences() {
+    final current = draft;
+    if (current == null || !current.repeatEntry) return;
+    final categoryId = _repeatCategory(
+      current.kind,
+      current.categoryId,
+      requireStored: !current.repeatCategoryExplicit,
+    )?.id;
+    final wallet = ledger.availableWallets
+        .where((candidate) => candidate == current.preferredWallet)
+        .firstOrNull;
+    if (current.categoryId != categoryId || current.preferredWallet != wallet) {
+      current.categoryId = categoryId;
+      current.preferredWallet = wallet;
+      updateDraft();
+    }
+  }
+
   void changeDraftKind(EntryKind kind) {
     if (draft == null || draft!.kind == kind) return;
     draft!.kind = kind;
-    draft!.categoryId = kind == EntryKind.income
-        ? ledger.categoriesFor(kind).firstOrNull?.id
-        : null;
+    if (draft!.repeatEntry) {
+      draft!.categoryId = _repeatCategory(
+        kind,
+        draft!.categoryId,
+        requireStored: !draft!.repeatCategoryExplicit,
+      )?.id;
+      if (draft!.categoryId == null) draft!.repeatCategoryExplicit = false;
+    } else {
+      draft!.categoryId = kind == EntryKind.income
+          ? ledger.categoriesFor(kind).firstOrNull?.id
+          : null;
+    }
   }
 
   void updateDraft() {
@@ -247,11 +376,26 @@ class AppController extends ChangeNotifier {
 
   Future<bool> saveDraft(Wallet wallet) async {
     if (busy || draft == null) return false;
+    _normalizeRepeatDraftReferences();
     final current = draft!;
     Entry next;
     Category? selected;
     try {
+      if (current.repeatEntry &&
+          (current.editingId != null || ledger.entry(current.id) != null)) {
+        throw const LedgerException(
+          'Repeating an entry must create a new record. Start a fresh repeat.',
+        );
+      }
       final cents = parseMoney(current.amount);
+      if (current.repeatEntry && current.kind != EntryKind.transfer) {
+        final selectedWallet = ledger.wallet(current.preferredWallet);
+        if (selectedWallet?.archived != false || selectedWallet != wallet) {
+          throw const LedgerException(
+            'Choose an active wallet for this repeated entry.',
+          );
+        }
+      }
       final before = current.editingId == null
           ? null
           : ledger.entry(current.editingId!);
@@ -298,6 +442,12 @@ class AppController extends ChangeNotifier {
       return false;
     }
     // commit marks busy synchronously, so a second tap cannot reach another write.
+    final unlocksFirstEntry =
+        current.editingId == null &&
+        next.adjustment == null &&
+        next.billId == null &&
+        next.loanId == null &&
+        !AdventureBadges.has(ledger, AdventureBadge.firstEntry);
     final result = await commit(
       (l) {
         var prepared = l;
@@ -340,16 +490,36 @@ class AppController extends ChangeNotifier {
       } catch (_) {
         /* The committed ID prevents a replay after restart. */
       }
-      if (ledger.preferences.haptics) await HapticFeedback.lightImpact();
+      showAdventureReward(
+        AdventureRewardKind.saved,
+        badge: unlocksFirstEntry ? AdventureBadge.firstEntry : null,
+      );
+      await _hapticIfEnabled();
       notifyListeners();
     }
     return result;
   }
 
-  Future<bool> undo() => commit(
-    (l) => l.undo(clock().millisecondsSinceEpoch),
-    message: 'Change undone',
-  );
+  Future<bool> undo() async {
+    final result = await commit(
+      (l) => l.undo(clock().millisecondsSinceEpoch),
+      message: 'Change undone',
+    );
+    if (result) {
+      celebratedLoanId = null;
+      adventureReward = null;
+      publish();
+    }
+    return result;
+  }
+
+  void clearLoanCelebration(String id) {
+    if (celebratedLoanId == id) {
+      celebratedLoanId = null;
+      notifyListeners();
+    }
+  }
+
   Future<bool> delete(Entry e) => commit(
     (l) => l.delete(e.id, clock().millisecondsSinceEpoch),
     message: 'Entry moved to Recently deleted',
@@ -360,20 +530,29 @@ class AppController extends ChangeNotifier {
     message: 'Entry restored',
     undo: true,
   );
-  Future<bool> preferences(Preferences value) => commit((l) {
-    final needsSchool =
-        value.widgetCategories.contains(schoolSuppliesCategory.id) &&
-        l.category(schoolSuppliesCategory.id) == null;
-    if (needsSchool && l.categories.length >= 100) {
-      throw const LedgerException(
-        'Keep up to 100 categories. Use an existing category before adding another.',
+  Future<bool> preferences(Preferences value) async {
+    final previousStyle = ledger.preferences.visualStyle;
+    final result = await commit((l) {
+      final needsSchool =
+          value.widgetCategories.contains(schoolSuppliesCategory.id) &&
+          l.category(schoolSuppliesCategory.id) == null;
+      if (needsSchool && l.categories.length >= 100) {
+        throw const LedgerException(
+          'Keep up to 100 categories. Use an existing category before adding another.',
+        );
+      }
+      return l.copy(
+        categories: [...l.categories, if (needsSchool) schoolSuppliesCategory],
+        preferences: value,
       );
+    });
+    if (result && previousStyle != value.visualStyle) {
+      final event = adventureReward;
+      if (event != null) clearAdventureReward(event.id);
     }
-    return l.copy(
-      categories: [...l.categories, if (needsSchool) schoolSuppliesCategory],
-      preferences: value,
-    );
-  });
+    return result;
+  }
+
   Future<bool> setBudget(String month, int cents) => commit(
     (l) => l.copy(budgets: {...l.budgets, month: cents}),
     message: 'Monthly budget updated',
@@ -569,6 +748,7 @@ class AppController extends ChangeNotifier {
       await store.saveRestoreRecovery(ledger);
       await store.save(preview.ledger);
       ledger = preview.ledger;
+      adventureReward = null;
       feedback =
           '${preview.added} entries restored · ${preview.skipped} already present';
       feedbackUndo = false;
@@ -603,8 +783,11 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void clearFeedback() {
-    feedback = null;
+  void clearFeedback([int? expectedId]) {
+    if (expectedId != null && expectedId != _feedbackSequence) return;
+    if (_feedback == null && !feedbackUndo) return;
+    _feedback = null;
+    _feedbackSequence++;
     feedbackUndo = false;
     notifyListeners();
   }
