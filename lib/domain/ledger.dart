@@ -9,6 +9,7 @@ part 'loans.dart';
 const schemaVersion = 6;
 const _keepAllowance = Object();
 const _keepBillPaymentCount = Object();
+const _keepBillDeletedAt = Object();
 const _keepLoanDueDate = Object();
 const _keepLoanDeletedAt = Object();
 const maxCentavos = 99999999999;
@@ -287,7 +288,11 @@ class Entry {
   final String? loanId;
   final LoanAction? loanAction;
   bool get deleted => deletedAt != null;
-  Entry withDeletion(int? timestamp) => Entry(
+  Entry withDeletion(
+    int? timestamp, {
+    int? updatedAt,
+    bool preserveUpdatedAt = false,
+  }) => Entry(
     id: id,
     kind: kind,
     centavos: centavos,
@@ -297,7 +302,11 @@ class Entry {
     categoryId: categoryId,
     note: note,
     createdAt: createdAt,
-    updatedAt: timestamp ?? DateTime.now().millisecondsSinceEpoch,
+    updatedAt:
+        updatedAt ??
+        (preserveUpdatedAt
+            ? this.updatedAt
+            : timestamp ?? DateTime.now().millisecondsSinceEpoch),
     deletedAt: timestamp,
     scheduleId: scheduleId,
     occurrenceDate: occurrenceDate,
@@ -327,6 +336,17 @@ class Entry {
     if (loanId != null) 'loanId': loanId,
     if (loanAction != null) 'loanAction': loanAction!.name,
   };
+  String get billUndoFingerprint {
+    final stableFields = toJson()
+      ..remove('updatedAt')
+      ..remove('deletedAt');
+    var hash = 0x811c9dc5;
+    for (final byte in utf8.encode(jsonEncode(stableFields))) {
+      hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
+  }
+
   factory Entry.fromJson(dynamic value) {
     final map = object(value);
     final kindValue = stringField(map, 'kind', max: 10);
@@ -574,6 +594,9 @@ bool sameEntry(Entry? a, Entry? b) =>
 bool sameLoan(Loan? a, Loan? b) =>
     jsonEncode(a?.toJson()) == jsonEncode(b?.toJson());
 
+bool sameBill(Bill? a, Bill? b) =>
+    jsonEncode(a?.toJson()) == jsonEncode(b?.toJson());
+
 class Change {
   const Change({
     this.after,
@@ -581,22 +604,71 @@ class Change {
     this.beforeLoan,
     this.afterLoan,
     this.loanEntryIds = const [],
+    this.beforeBill,
+    this.afterBill,
+    this.billPaymentCount = 0,
+    this.billPaymentFingerprint,
   });
   final Entry? before;
   final Entry? after;
   final Loan? beforeLoan, afterLoan;
   final List<String> loanEntryIds;
+  final Bill? beforeBill, afterBill;
+  final int billPaymentCount;
+  final String? billPaymentFingerprint;
   bool get isLoanChange => beforeLoan != null || afterLoan != null;
+  bool get isBillChange => beforeBill != null || afterBill != null;
   Map<String, dynamic> toJson() => {
     if (isLoanChange) 'type': 'loan',
+    if (isBillChange) 'type': 'bill',
     'before': before?.toJson(),
     'after': after?.toJson(),
     if (beforeLoan != null) 'beforeLoan': beforeLoan!.toJson(),
     if (afterLoan != null) 'afterLoan': afterLoan!.toJson(),
     if (loanEntryIds.isNotEmpty) 'loanEntryIds': loanEntryIds,
+    if (beforeBill != null) 'beforeBill': beforeBill!.toJson(),
+    if (afterBill != null) 'afterBill': afterBill!.toJson(),
+    if (isBillChange) 'billPaymentCount': billPaymentCount,
+    if (billPaymentFingerprint != null)
+      'billPaymentFingerprint': billPaymentFingerprint,
   };
   factory Change.fromJson(dynamic value) {
     final map = object(value);
+    if (map['type'] == 'bill') {
+      final beforeBill = map['beforeBill'] == null
+          ? null
+          : Bill.fromJson(map['beforeBill']);
+      final afterBill = map['afterBill'] == null
+          ? null
+          : Bill.fromJson(map['afterBill']);
+      final paymentCount = intField(
+        map,
+        'billPaymentCount',
+        min: 0,
+        max: 20000,
+      );
+      final paymentFingerprint = stringField(
+        map,
+        'billPaymentFingerprint',
+        max: 8,
+      );
+      if (beforeBill == null ||
+          afterBill == null ||
+          beforeBill.id != afterBill.id ||
+          beforeBill.deleted ||
+          !afterBill.deleted ||
+          afterBill.enabled ||
+          afterBill.remind ||
+          !RegExp(r'^[0-9a-f]{8}$').hasMatch(paymentFingerprint)) {
+        throw const LedgerException('A bill change record is invalid.');
+      }
+      return Change(
+        beforeBill: beforeBill,
+        afterBill: afterBill,
+        billPaymentCount: paymentCount,
+        billPaymentFingerprint: paymentFingerprint,
+      );
+    }
     if (map['type'] == 'loan') {
       final beforeLoan = map['beforeLoan'] == null
           ? null
@@ -618,6 +690,9 @@ class Change {
         loanEntryIds: List.unmodifiable(rawIds.cast<String>()),
       );
     }
+    if (map.containsKey('type')) {
+      throw const LedgerException('A change record type is invalid.');
+    }
     final after = map['after'] == null ? null : Entry.fromJson(map['after']);
     final before = map['before'] == null ? null : Entry.fromJson(map['before']);
     if (after == null || before != null && before.id != after.id) {
@@ -625,6 +700,19 @@ class Change {
     }
     return Change(before: before, after: after);
   }
+}
+
+String billPaymentFingerprint(Iterable<Entry> payments) {
+  final snapshots = payments.toList()..sort((a, b) => a.id.compareTo(b.id));
+  final data = [
+    for (final payment in snapshots)
+      [payment.id, payment.updatedAt, payment.billUndoFingerprint],
+  ];
+  var hash = 0x811c9dc5;
+  for (final byte in utf8.encode(jsonEncode(data))) {
+    hash = ((hash ^ byte) * 0x01000193) & 0xffffffff;
+  }
+  return hash.toRadixString(16).padLeft(8, '0');
 }
 
 class WalletCalculation {
@@ -830,6 +918,22 @@ class Ledger {
         ? this.allowance
         : allowance as AllowanceSchedule?,
   );
+
+  Ledger withoutBillReminders() => copy(
+    bills: [for (final bill in bills) bill.copy(remind: false)],
+    changes: [
+      for (final change in changes)
+        if (change.isBillChange)
+          Change(
+            beforeBill: change.beforeBill?.copy(remind: false),
+            afterBill: change.afterBill?.copy(enabled: false, remind: false),
+            billPaymentCount: change.billPaymentCount,
+            billPaymentFingerprint: change.billPaymentFingerprint,
+          )
+        else
+          change,
+    ],
+  );
   WalletCalculation calculate(Wallet wallet) =>
       _walletCalculations.putIfAbsent(wallet, () {
         var income = 0,
@@ -938,15 +1042,32 @@ class Ledger {
                     wallet(next.toWallet)?.archived != false))) {
       throw const LedgerException('Choose active wallets before saving.');
     }
+    if (restoringPayment) {
+      final origin = next.billId == null ? null : bill(next.billId!);
+      if (previous == null ||
+          !previous.deleted ||
+          next.billId == null ||
+          previous.billId != next.billId ||
+          previous.billDueDate != next.billDueDate ||
+          origin == null ||
+          origin.deleted ||
+          !origin.enabled ||
+          !origin.containsDue(next.billDueDate!) ||
+          origin.paymentId(next.billDueDate!) != next.id) {
+        throw const LedgerException(
+          'This bill payment cannot be recorded again.',
+        );
+      }
+    }
     if (restoringPayment &&
-        (previous == null ||
-            !previous.deleted ||
-            next.billId == null ||
-            previous.billId != next.billId ||
-            previous.billDueDate != next.billDueDate)) {
-      throw const LedgerException(
-        'This bill payment cannot be recorded again.',
-      );
+        entries.any(
+          (entry) =>
+              entry.id != next.id &&
+              !entry.deleted &&
+              entry.billId == next.billId &&
+              entry.billDueDate == next.billDueDate,
+        )) {
+      throw const LedgerException('This bill payment is already recorded.');
     }
     if (previous != null && !editing && !restoringPayment) {
       if (sameEntry(previous, next)) return this;
@@ -1026,6 +1147,70 @@ class Ledger {
           beforeLoan: previous,
           afterLoan: value,
           loanEntryIds: issuance == null ? const [] : [issuance.id],
+        ),
+      ].reversed.take(30).toList().reversed.toList(),
+    );
+  }
+
+  Ledger removeBill(Bill reviewed, List<Entry> reviewedPayments, int now) {
+    final before = bill(reviewed.id);
+    if (before == null || before.deleted || !sameBill(before, reviewed)) {
+      throw const LedgerException(
+        'This bill changed. Review it again before deleting.',
+      );
+    }
+    final payments = entries
+        .where((entry) => entry.billId == before.id && !entry.deleted)
+        .toList();
+    final reviewedById = {
+      for (final entry in reviewedPayments) entry.id: entry,
+    };
+    if (reviewedById.length != reviewedPayments.length ||
+        reviewedById.length != payments.length ||
+        payments.any((entry) => !sameEntry(reviewedById[entry.id], entry)) ||
+        reviewedPayments.any(
+          (entry) => entry.billId != before.id || entry.deleted,
+        )) {
+      throw const LedgerException(
+        'A payment changed. Review the bill and its wallet credits again.',
+      );
+    }
+    var lastBillDeletion = 0;
+    for (final entry in entries) {
+      if (entry.billId == before.id && entry.deletedAt != null) {
+        lastBillDeletion = max(lastBillDeletion, entry.deletedAt!);
+      }
+    }
+    if (lastBillDeletion >= 9000000000000000) {
+      throw const LedgerException('This bill cannot be deleted right now.');
+    }
+    var deletedAt = max(now, before.deletedAt ?? 0);
+    for (final payment in payments) {
+      deletedAt = max(deletedAt, payment.updatedAt);
+    }
+    deletedAt = max(deletedAt, lastBillDeletion + 1);
+    if (deletedAt > 9000000000000000) {
+      throw const LedgerException('This bill cannot be deleted right now.');
+    }
+    final after = before.copy(
+      enabled: false,
+      remind: false,
+      deletedAt: deletedAt,
+    );
+    final byId = {
+      for (final payment in payments)
+        payment.id: payment.withDeletion(deletedAt, preserveUpdatedAt: true),
+    };
+    return copy(
+      bills: [...bills.where((bill) => bill.id != before.id), after],
+      entries: [for (final entry in entries) byId[entry.id] ?? entry],
+      changes: [
+        ...changes,
+        Change(
+          beforeBill: before,
+          afterBill: after,
+          billPaymentCount: payments.length,
+          billPaymentFingerprint: billPaymentFingerprint(payments),
         ),
       ].reversed.take(30).toList().reversed.toList(),
     );
@@ -1161,6 +1346,28 @@ class Ledger {
         'Restore loan activity from its loan details.',
       );
     }
+    if (before.billId != null) {
+      final origin = bill(before.billId!);
+      final dueDate = before.billDueDate;
+      if (origin == null ||
+          origin.deleted ||
+          dueDate == null ||
+          !origin.containsDue(dueDate) ||
+          origin.paymentId(dueDate) != before.id) {
+        throw const LedgerException(
+          'A payment under a deleted bill cannot be restored by itself. Undo the bill deletion.',
+        );
+      }
+      if (entries.any(
+        (entry) =>
+            entry.id != before.id &&
+            !entry.deleted &&
+            entry.billId == before.billId &&
+            entry.billDueDate == dueDate,
+      )) {
+        throw const LedgerException('This bill payment is already recorded.');
+      }
+    }
     final after = Entry(
       id: before.id,
       kind: before.kind,
@@ -1225,6 +1432,57 @@ class Ledger {
         ],
         entries: [
           for (final value in entries) targetEntries[value.id] ?? value,
+        ],
+        changes: changes.sublist(0, changes.length - 1),
+      );
+    }
+    if (change.isBillChange) {
+      final afterBill = change.afterBill!;
+      final beforeBill = change.beforeBill!;
+      final deletedAt = afterBill.deletedAt!;
+      if (!sameBill(bill(afterBill.id), afterBill) ||
+          entries.any(
+            (entry) => entry.billId == afterBill.id && !entry.deleted,
+          )) {
+        throw const LedgerException(
+          'This bill changed again. Review its payment history.',
+        );
+      }
+      final restoredPayments = <String, Entry>{};
+      final paymentSnapshot = entries
+          .where(
+            (entry) =>
+                entry.billId == afterBill.id && entry.deletedAt == deletedAt,
+          )
+          .toList();
+      if (paymentSnapshot.length != change.billPaymentCount ||
+          billPaymentFingerprint(paymentSnapshot) !=
+              change.billPaymentFingerprint) {
+        throw const LedgerException(
+          'A bill payment changed again. Review its wallet history.',
+        );
+      }
+      for (final current in paymentSnapshot) {
+        final dueDate = current.billDueDate;
+        if (!current.deleted ||
+            current.billId != afterBill.id ||
+            current.updatedAt > deletedAt ||
+            dueDate == null ||
+            !beforeBill.containsDue(dueDate) ||
+            beforeBill.paymentId(dueDate) != current.id) {
+          throw const LedgerException(
+            'A bill payment changed again. Review its wallet history.',
+          );
+        }
+        restoredPayments[current.id] = current.withDeletion(
+          null,
+          preserveUpdatedAt: true,
+        );
+      }
+      return copy(
+        bills: [...bills.where((bill) => bill.id != afterBill.id), beforeBill],
+        entries: [
+          for (final value in entries) restoredPayments[value.id] ?? value,
         ],
         changes: changes.sublist(0, changes.length - 1),
       );
@@ -1338,15 +1596,20 @@ class Ledger {
       );
     }
     final rawBills = map['bills'] ?? <dynamic>[];
-    if (rawBills is! List || rawBills.length > 100) {
-      throw const LedgerException('Keep up to 100 bills.');
+    if (rawBills is! List || rawBills.length > maxBillRecords) {
+      throw const LedgerException('The backup contains too many bill records.');
     }
     final bills = rawBills.map(Bill.fromJson).toList();
+    final billsById = {for (final bill in bills) bill.id: bill};
     if (bills.map((b) => b.id).toSet().length != bills.length) {
       throw const LedgerException('The backup contains duplicate bills.');
     }
+    if (bills.where((bill) => !bill.deleted).length > maxActiveBills) {
+      throw const LedgerException('Keep up to 100 active or paused bills.');
+    }
     final categories = rawCategories.map(Category.fromJson).toList();
     final entries = rawEntries.map(Entry.fromJson).toList();
+    final entriesById = {for (final entry in entries) entry.id: entry};
     final changes = rawChanges.map(Change.fromJson).toList();
     final rawLoans = map['loans'] ?? <dynamic>[];
     if (rawLoans is! List || rawLoans.length > maxLoans) {
@@ -1379,7 +1642,7 @@ class Ledger {
         );
       }
       if (e.billId != null) {
-        final origin = bills.where((b) => b.id == e.billId).firstOrNull;
+        final origin = billsById[e.billId];
         if (origin == null || !origin.containsDue(e.billDueDate!)) {
           throw const LedgerException(
             'A bill payment origin is missing or invalid.',
@@ -1396,9 +1659,62 @@ class Ledger {
       }
     }
     if (changes.any(
-      (c) => c.after != null && !entries.any((e) => e.id == c.after!.id),
+      (c) => c.after != null && !entriesById.containsKey(c.after!.id),
     )) {
       throw const LedgerException('A change references a missing transaction.');
+    }
+    final activeBillPaymentCounts = <String, int>{};
+    for (final entry in entries) {
+      if (entry.billId != null && !entry.deleted) {
+        activeBillPaymentCounts.update(
+          entry.billId!,
+          (count) => count + 1,
+          ifAbsent: () => 1,
+        );
+      }
+    }
+    for (final bill in bills.where((bill) => bill.deleted)) {
+      if (bill.enabled || bill.remind) {
+        throw const LedgerException('A deleted bill must be inactive.');
+      }
+      if (activeBillPaymentCounts.containsKey(bill.id)) {
+        throw const LedgerException('A deleted bill has an active payment.');
+      }
+    }
+    final billPaymentsByMarker = <(String, int), List<Entry>>{};
+    for (final entry in entries) {
+      if (entry.billId != null && entry.deletedAt != null) {
+        billPaymentsByMarker
+            .putIfAbsent((entry.billId!, entry.deletedAt!), () => <Entry>[])
+            .add(entry);
+      }
+    }
+    for (final change in changes.where((change) => change.isBillChange)) {
+      final afterBill = change.afterBill!;
+      final currentBill = billsById[afterBill.id];
+      if (currentBill == null || !sameBill(currentBill, afterBill)) {
+        throw const LedgerException('A bill change references a missing bill.');
+      }
+      final marker = afterBill.deletedAt!;
+      final payments = billPaymentsByMarker[(afterBill.id, marker)] ?? const [];
+      if (payments.length != change.billPaymentCount ||
+          billPaymentFingerprint(payments) != change.billPaymentFingerprint) {
+        throw const LedgerException(
+          'A bill change references an invalid payment set.',
+        );
+      }
+      for (final current in payments) {
+        final dueDate = current.billDueDate;
+        if (!current.deleted ||
+            current.updatedAt > marker ||
+            dueDate == null ||
+            !afterBill.containsDue(dueDate) ||
+            afterBill.paymentId(dueDate) != current.id) {
+          throw const LedgerException(
+            'A bill change references an invalid payment.',
+          );
+        }
+      }
     }
     final loanIds = loans.map((loan) => loan.id).toSet();
     for (final loan in loans) {
@@ -1569,8 +1885,8 @@ RestorePreview previewRestore(Ledger current, Ledger imported) {
           balanceWidgetVisible: current.preferences.balanceWidgetVisible,
         ),
         allowance: imported.allowance?.copy(enabled: false),
-        bills: imported.bills.map((b) => b.copy(remind: false)).toList(),
-        changes: imported.changes,
+        bills: imported.bills.map((bill) => bill.copy(remind: false)).toList(),
+        changes: imported.withoutBillReminders().changes,
       ),
       added: imported.entries.length,
       skipped: 0,

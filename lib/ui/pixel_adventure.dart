@@ -268,40 +268,86 @@ class PixelAdventureHero extends StatelessWidget {
                       const SizedBox(height: 9),
                       PixelFrame(
                         fillColor: p.ink.withValues(alpha: .97),
-                        padding: const EdgeInsets.fromLTRB(12, 7, 7, 7),
-                        child: Row(
+                        padding: const EdgeInsets.fromLTRB(12, 9, 9, 9),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Expanded(
-                              child: Semantics(
-                                label: count == 0
-                                    ? 'No active wallets'
-                                    : 'Total tracked balance ${money(balance)} across $count active ${count == 1 ? 'wallet' : 'wallets'}. Manual records.',
-                                child: ExcludeSemantics(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'WALLET BALANCE',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: textStyle(
+                                      context,
+                                      size: 10,
+                                      weight: FontWeight.w800,
+                                      color: p.pixelGold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Press(
+                                  key: const ValueKey(
+                                    'adventure-wallet-action',
+                                  ),
+                                  label:
+                                      'View and manage $count active ${count == 1 ? 'wallet' : 'wallets'}',
+                                  onPressed: onWallets,
+                                  color: p.accent,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      Icon(
+                                        CupertinoIcons.creditcard_fill,
+                                        color: p.pixelGold,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 5),
                                       Text(
-                                        'WALLET BALANCE',
+                                        'Wallets',
                                         style: textStyle(
                                           context,
                                           size: 10,
-                                          weight: FontWeight.w800,
-                                          color: p.pixelGold,
+                                          weight: FontWeight.w700,
+                                          color: p.surface,
                                         ),
                                       ),
-                                      FittedBox(
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Semantics(
+                              label: count == 0
+                                  ? 'No active wallets'
+                                  : 'Total tracked balance ${money(balance)} across $count active ${count == 1 ? 'wallet' : 'wallets'}. Manual records.',
+                              child: ExcludeSemantics(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: FittedBox(
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.centerLeft,
                                         child: Text(
                                           count == 0 ? '—' : money(balance),
+                                          maxLines: 1,
+                                          softWrap: false,
                                           key: const ValueKey(
                                             'adventure-balance',
                                           ),
                                           style: textStyle(
                                             context,
-                                            size: 27,
+                                            size: 40,
                                             weight: FontWeight.w800,
                                             tabular: true,
                                             color: balance < 0
@@ -310,51 +356,19 @@ class PixelAdventureHero extends StatelessWidget {
                                           ),
                                         ),
                                       ),
-                                      Text(
-                                        count == 0
-                                            ? 'Add a wallet to begin'
-                                            : '$count active ${count == 1 ? 'wallet' : 'wallets'} · manual records',
-                                        style: textStyle(
-                                          context,
-                                          size: 10,
-                                          color: p.surface,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Press(
-                              key: const ValueKey('adventure-wallet-action'),
-                              label:
-                                  'View and manage $count active ${count == 1 ? 'wallet' : 'wallets'}',
-                              onPressed: onWallets,
-                              color: p.accent,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 7,
-                                vertical: 4,
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    CupertinoIcons.creditcard_fill,
-                                    color: p.pixelGold,
-                                    size: 19,
-                                  ),
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    'Wallets',
-                                    style: textStyle(
-                                      context,
-                                      size: 9,
-                                      weight: FontWeight.w700,
-                                      color: p.surface,
                                     ),
-                                  ),
-                                ],
+                                    Text(
+                                      count == 0
+                                          ? 'Add a wallet to begin'
+                                          : '$count active ${count == 1 ? 'wallet' : 'wallets'} · manual records',
+                                      style: textStyle(
+                                        context,
+                                        size: 10,
+                                        color: p.surface,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],

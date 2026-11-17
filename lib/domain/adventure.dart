@@ -35,6 +35,7 @@ class AdventureBadges {
       AdventureBadge.firstEntry,
     if (ledger.bills.any(
       (bill) =>
+          !bill.deleted &&
           bill.paymentCount != null &&
           bill.paidInstallments(ledger) >= bill.paymentCount!,
     ))

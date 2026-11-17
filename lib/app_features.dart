@@ -61,12 +61,23 @@ extension BillsAndBalance on AppController {
     );
   }
 
-  Future<bool> setBill(Bill value) => commit((l) {
+  Future<bool> setBill(Bill value, {Bill? reviewed}) => commit((l) {
     Bill.fromJson(value.toJson());
     final previous = l.bill(value.id);
-    if (previous == null && l.bills.length >= 100) {
+    if (previous?.deleted == true ||
+        reviewed != null &&
+            (previous == null || !sameBill(previous, reviewed))) {
       throw const LedgerException(
-        'Keep up to 100 bills, including paused bills.',
+        'This bill changed. Review it again before saving.',
+      );
+    }
+    if (previous == null &&
+        l.bills.where((bill) => !bill.deleted).length >= maxActiveBills) {
+      throw const LedgerException('Keep up to 100 active or paused bills.');
+    }
+    if (previous == null && l.bills.length >= maxBillRecords) {
+      throw const LedgerException(
+        'This ledger has too many bill records. Export a backup before starting another bill.',
       );
     }
     final history = l.entries.where((e) => e.billId == value.id);
@@ -94,6 +105,17 @@ extension BillsAndBalance on AppController {
     );
   }, message: 'Bill saved');
 
+  Future<bool> deleteBill(Bill reviewed, List<Entry> reviewedPayments) =>
+      commit(
+        (l) => l.removeBill(
+          reviewed,
+          reviewedPayments,
+          clock().millisecondsSinceEpoch,
+        ),
+        message: 'Bill deleted and payments reversed',
+        undo: true,
+      );
+
   Future<bool> recordBillPayment(
     Bill reviewed,
     String dueDate,
@@ -116,6 +138,7 @@ extension BillsAndBalance on AppController {
       (l) {
         final bill = l.bill(reviewed.id);
         if (bill == null ||
+            bill.deleted ||
             !bill.enabled ||
             jsonEncode(bill.toJson()) != jsonEncode(reviewed.toJson()) ||
             bill.nextDue(l) != dueDate) {

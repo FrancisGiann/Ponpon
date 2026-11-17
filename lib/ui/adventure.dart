@@ -183,7 +183,7 @@ class AdventureBillsProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final bills = ledger.bills
-        .where((bill) => bill.paymentCount != null)
+        .where((bill) => !bill.deleted && bill.paymentCount != null)
         .toList();
     if (bills.isEmpty) return const SizedBox.shrink();
     final shown = bills.take(3).toList();

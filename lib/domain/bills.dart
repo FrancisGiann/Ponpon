@@ -3,6 +3,8 @@ part of 'ledger.dart';
 enum BillFrequency { once, weekly, monthly, yearly }
 
 const maxBillPayments = 20000;
+const maxActiveBills = 100;
+const maxBillRecords = 20000;
 
 class Bill {
   const Bill({
@@ -14,12 +16,15 @@ class Bill {
     this.paymentCount,
     this.enabled = true,
     this.remind = false,
+    this.deletedAt,
   });
   final String id, name, startDate;
   final int centavos;
   final BillFrequency frequency;
   final int? paymentCount;
   final bool enabled, remind;
+  final int? deletedAt;
+  bool get deleted => deletedAt != null;
 
   Bill copy({
     String? name,
@@ -29,6 +34,7 @@ class Bill {
     Object? paymentCount = _keepBillPaymentCount,
     bool? enabled,
     bool? remind,
+    Object? deletedAt = _keepBillDeletedAt,
   }) => Bill(
     id: id,
     name: name ?? this.name,
@@ -40,6 +46,9 @@ class Bill {
         : paymentCount as int?,
     enabled: enabled ?? this.enabled,
     remind: remind ?? this.remind,
+    deletedAt: identical(deletedAt, _keepBillDeletedAt)
+        ? this.deletedAt
+        : deletedAt as int?,
   );
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -50,6 +59,7 @@ class Bill {
     'paymentCount': paymentCount,
     'enabled': enabled,
     'remind': remind,
+    if (deletedAt != null) 'deletedAt': deletedAt,
   };
   factory Bill.fromJson(dynamic value) {
     final map = object(value);
@@ -78,11 +88,14 @@ class Bill {
       id: id,
       name: name,
       startDate: start,
-      centavos: intField(map, 'centavos', min: 1),
+      centavos: intField(map, 'centavos', min: 1, max: maxCentavos),
       frequency: frequency,
       paymentCount: paymentCount,
       enabled: boolField(map, 'enabled', fallback: true),
       remind: boolField(map, 'remind'),
+      deletedAt: map['deletedAt'] == null
+          ? null
+          : intField(map, 'deletedAt', max: 9000000000000000),
     );
     if (paymentCount != null && bill.lastDueDate == null) {
       throw const LedgerException(
@@ -129,9 +142,9 @@ class Bill {
     return date.year > 2200 ? null : dayKey(date);
   }
 
-  bool containsDue(String value) {
+  int? occurrenceIndex(String value) {
     final date = localDay(value), anchor = localDay(startDate);
-    if (value.compareTo(startDate) < 0) return false;
+    if (value.compareTo(startDate) < 0) return null;
     final index = switch (frequency) {
       BillFrequency.once => 0,
       BillFrequency.weekly =>
@@ -143,11 +156,38 @@ class Bill {
         (date.year - anchor.year) * 12 + date.month - anchor.month,
       BillFrequency.yearly => date.year - anchor.year,
     };
-    return occurrence(index) == value;
+    return occurrence(index) == value ? index : null;
+  }
+
+  bool containsDue(String value) => occurrenceIndex(value) != null;
+
+  int? lastOccurrenceIndexOnOrBefore(String value) {
+    final date = localDay(value), anchor = localDay(startDate);
+    if (value.compareTo(startDate) < 0) return null;
+    var index = switch (frequency) {
+      BillFrequency.once => 0,
+      BillFrequency.weekly =>
+        DateTime.utc(date.year, date.month, date.day)
+                .difference(DateTime.utc(anchor.year, anchor.month, anchor.day))
+                .inDays ~/
+            7,
+      BillFrequency.monthly =>
+        (date.year - anchor.year) * 12 + date.month - anchor.month,
+      BillFrequency.yearly => date.year - anchor.year,
+    };
+    index = min(index, maxBillPayments);
+    final count = paymentCount;
+    if (count != null) index = min(index, count - 1);
+    while (index >= 0) {
+      final due = occurrence(index);
+      if (due != null && due.compareTo(value) <= 0) return index;
+      index--;
+    }
+    return null;
   }
 
   String? nextDue(Ledger ledger) {
-    if (!enabled) return null;
+    if (!enabled || deleted) return null;
     final paid = ledger._paidBillDates[id] ?? const <String>{};
     for (var i = 0; i <= paid.length; i++) {
       final date = occurrence(i);
@@ -165,6 +205,135 @@ class Bill {
   String? get lastDueDate {
     final count = paymentCount;
     return count == null ? null : occurrence(count - 1);
+  }
+}
+
+class BillDueGroup {
+  const BillDueGroup({
+    required this.bill,
+    required this.lastDueIndex,
+    required this.paidIndices,
+  });
+
+  final Bill bill;
+  final int lastDueIndex;
+  final List<int> paidIndices;
+  int get unpaidCount => lastDueIndex + 1 - paidIndices.length;
+  int get totalCentavos => bill.centavos * unpaidCount;
+
+  String dueDateAt(int unpaidIndex) {
+    if (unpaidIndex < 0 || unpaidIndex >= unpaidCount) {
+      throw RangeError.index(unpaidIndex, this, 'unpaidIndex');
+    }
+    var low = unpaidIndex;
+    var high = unpaidIndex + paidIndices.length;
+    while (low < high) {
+      final middle = low + ((high - low) >> 1);
+      final paidThrough = _upperBound(paidIndices, middle);
+      final unpaidThrough = middle + 1 - paidThrough;
+      if (unpaidThrough >= unpaidIndex + 1) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
+    }
+    return bill.occurrence(low)!;
+  }
+
+  static int _upperBound(List<int> values, int target) {
+    var low = 0, high = values.length;
+    while (low < high) {
+      final middle = low + ((high - low) >> 1);
+      if (values[middle] <= target) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return low;
+  }
+}
+
+class BillDueOccurrence {
+  const BillDueOccurrence({required this.bill, required this.dueDate});
+  final Bill bill;
+  final String dueDate;
+  int get centavos => bill.centavos;
+}
+
+class SafeToSpendSummary {
+  SafeToSpendSummary({
+    required this.activeWalletCount,
+    required this.walletBalanceCentavos,
+    required this.throughDate,
+    required List<BillDueGroup> dueBills,
+  }) : dueBills = List.unmodifiable(dueBills);
+
+  final int activeWalletCount, walletBalanceCentavos;
+  final DateTime throughDate;
+  final List<BillDueGroup> dueBills;
+  int get duePaymentCount =>
+      dueBills.fold(0, (sum, group) => sum + group.unpaidCount);
+  int get dueCentavos =>
+      dueBills.fold(0, (sum, group) => sum + group.totalCentavos);
+  int? get safeCentavos =>
+      activeWalletCount == 0 ? null : walletBalanceCentavos - dueCentavos;
+  String? get nearestDueDate =>
+      dueBills.isEmpty ? null : dueBills.first.dueDateAt(0);
+
+  BillDueOccurrence occurrenceAt(int index) {
+    if (index < 0 || index >= duePaymentCount) {
+      throw RangeError.index(index, this, 'index');
+    }
+    var offset = index;
+    for (final group in dueBills) {
+      if (offset < group.unpaidCount) {
+        return BillDueOccurrence(
+          bill: group.bill,
+          dueDate: group.dueDateAt(offset),
+        );
+      }
+      offset -= group.unpaidCount;
+    }
+    throw StateError('The due payment index is inconsistent.');
+  }
+}
+
+extension SafeToSpend on Ledger {
+  SafeToSpendSummary safeToSpend(DateTime now) {
+    final local = now.toLocal();
+    final today = DateTime(local.year, local.month, local.day);
+    final through = DateTime(today.year, today.month, today.day + 7);
+    final throughKey = dayKey(through);
+    final dueBills = <BillDueGroup>[];
+
+    for (final bill in bills) {
+      if (!bill.enabled || bill.deleted) continue;
+      final lastDueIndex = bill.lastOccurrenceIndexOnOrBefore(throughKey);
+      if (lastDueIndex == null) continue;
+      final paidIndices = [
+        for (final paidDate in billPaidDates(bill.id))
+          if (paidDate.compareTo(throughKey) <= 0)
+            if (bill.occurrenceIndex(paidDate) case final int index) index,
+      ]..sort();
+      final group = BillDueGroup(
+        bill: bill,
+        lastDueIndex: lastDueIndex,
+        paidIndices: List.unmodifiable(paidIndices),
+      );
+      if (group.unpaidCount > 0) dueBills.add(group);
+    }
+
+    dueBills.sort((a, b) {
+      final date = a.dueDateAt(0).compareTo(b.dueDateAt(0));
+      return date != 0 ? date : a.bill.id.compareTo(b.bill.id);
+    });
+    return SafeToSpendSummary(
+      activeWalletCount: availableWallets.length,
+      walletBalanceCentavos: activeWalletBalance,
+      throughDate: through,
+      dueBills: dueBills,
+    );
   }
 }
 

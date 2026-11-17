@@ -472,6 +472,7 @@ class TodayPage extends StatelessWidget {
       );
     }
     return ListView(
+      key: const ValueKey('today-scroll'),
       padding: EdgeInsets.zero,
       children: [
         PageHeading(
@@ -513,19 +514,8 @@ class TodayPage extends StatelessWidget {
                 const SizedBox(height: 16),
               ],
               HomeBalances(app: app),
-              if (l.bills.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Surface(
-                  padding: EdgeInsets.zero,
-                  child: GroupRow(
-                    'Upcoming bills',
-                    subtitle: 'Review due dates and record payments',
-                    icon: CupertinoIcons.calendar,
-                    last: true,
-                    onTap: () => pushPocket<void>(context, BillsPage(app: app)),
-                  ),
-                ),
-              ],
+              const SizedBox(height: 10),
+              SafeToSpendCard(app: app),
               const SizedBox(height: 20),
               PrimaryButton(
                 'Add an entry',
@@ -778,9 +768,6 @@ class TodayPage extends StatelessWidget {
   }) {
     final today = dayKey(now);
     final balances = HomeBalances(app: app);
-    final upcomingBills = ledger.bills
-        .where((bill) => bill.nextDue(ledger) != null)
-        .length;
     return ListView(
       key: const ValueKey('adventure-today-scroll'),
       padding: EdgeInsets.zero,
@@ -791,6 +778,10 @@ class TodayPage extends StatelessWidget {
           onSettings: () => pushPocket<void>(context, SettingsPage(app: app)),
           onWallets: () => balances.showWallets(context),
           onAdd: () => openEntry(context, app),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: SafeToSpendCard(app: app),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 9, 12, 0),
@@ -821,8 +812,7 @@ class TodayPage extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: _AdventureFinanceDetails(
             initiallyExpanded: app.notice != null,
-            summary:
-                'Quick categories · recent activity · bills · monthly budget',
+            summary: 'Quick categories · recent activity · monthly budget',
             child: Column(
               children: [
                 if (app.notice != null) ...[
@@ -840,17 +830,6 @@ class TodayPage extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                if (upcomingBills > 0) ...[
-                  _AdventureDashboardLink(
-                    title: 'Upcoming bills',
-                    subtitle:
-                        '$upcomingBills scheduled ${upcomingBills == 1 ? 'payment' : 'payments'} · review dates and record what you paid',
-                    asset: 'assets/adventure/pixel_bills.png',
-                    onPressed: () =>
-                        pushPocket<void>(context, BillsPage(app: app)),
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -1090,62 +1069,6 @@ class _AdventureFinanceDetailsState extends State<_AdventureFinanceDetails> {
               padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
               child: widget.child,
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdventureDashboardLink extends StatelessWidget {
-  const _AdventureDashboardLink({
-    required this.title,
-    required this.subtitle,
-    required this.asset,
-    required this.onPressed,
-  });
-  final String title, subtitle, asset;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return Press(
-      label: '$title. $subtitle',
-      onPressed: onPressed,
-      color: p.surface,
-      raised: true,
-      radius: 2,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      child: Row(
-        children: [
-          Image.asset(
-            asset,
-            width: 38,
-            height: 38,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.none,
-            excludeFromSemantics: true,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: textStyle(context, size: 14, weight: FontWeight.w800),
-                ),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: textStyle(context, size: 11, color: p.secondary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 4),
-          Icon(CupertinoIcons.chevron_right, color: p.accent, size: 17),
         ],
       ),
     );
@@ -2942,7 +2865,7 @@ class _PlanPageState extends State<PlanPage> {
                     ),
                   ),
                   Text(
-                    '${ledger.bills.where((bill) => bill.paymentCount != null).length} TRACKED',
+                    '${ledger.bills.where((bill) => !bill.deleted && bill.paymentCount != null).length} TRACKED',
                     style: textStyle(
                       context,
                       size: 9,
@@ -2954,7 +2877,9 @@ class _PlanPageState extends State<PlanPage> {
               ),
               const SizedBox(height: 4),
               AdventureBillsProgress(ledger: ledger),
-              if (!ledger.bills.any((bill) => bill.paymentCount != null))
+              if (!ledger.bills.any(
+                (bill) => !bill.deleted && bill.paymentCount != null,
+              ))
                 Padding(
                   padding: const EdgeInsets.only(top: 7),
                   child: Text(

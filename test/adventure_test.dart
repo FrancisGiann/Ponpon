@@ -5,6 +5,7 @@ import 'package:pocket_entry/data/storage.dart';
 import 'package:pocket_entry/domain/adventure.dart';
 import 'package:pocket_entry/domain/ledger.dart';
 import 'package:pocket_entry/main.dart';
+import 'package:pocket_entry/ui/design.dart';
 import 'package:pocket_entry/ui/entry_page.dart';
 import 'package:pocket_entry/ui/pixel_adventure.dart';
 import 'package:pocket_entry/ui/screens.dart';
@@ -67,27 +68,110 @@ void main() {
     final balance = tester.getRect(
       find.byKey(const ValueKey('adventure-balance')),
     );
+    final balanceText = tester.widget<Text>(
+      find.byKey(const ValueKey('adventure-balance')),
+    );
+    final wallets = tester.getRect(
+      find.byKey(const ValueKey('adventure-wallet-action')),
+    );
     final add = tester.getRect(
       find.byKey(const ValueKey('adventure-add-entry')),
     );
     final hero = tester.getRect(
       find.byKey(const ValueKey('adventure-overworld')),
     );
-    final plan = tester.getRect(
-      find.byKey(const ValueKey('adventure-destination-plan')),
+    final planFinder = find.byKey(const ValueKey('adventure-destination-plan'));
+    final loansFinder = find.byKey(
+      const ValueKey('adventure-destination-loans'),
     );
-    final loans = tester.getRect(
-      find.byKey(const ValueKey('adventure-destination-loans')),
+    for (
+      var attempt = 0;
+      attempt < 8 && planFinder.evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.drag(
+        find.byKey(const ValueKey('adventure-today-scroll')),
+        const Offset(0, -260),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(planFinder, findsOneWidget);
+    for (
+      var attempt = 0;
+      attempt < 3 && loansFinder.evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.drag(
+        find.byKey(const ValueKey('adventure-today-scroll')),
+        const Offset(0, -100),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(loansFinder, findsOneWidget);
+    final plan = tester.getRect(planFinder);
+    final loans = tester.getRect(loansFinder);
+    final visibleHero = tester.getRect(
+      find.byKey(const ValueKey('adventure-overworld')),
     );
     final nav = tester.getRect(find.byKey(const ValueKey('home-tab-bar')));
     expect(balance.top, lessThan(add.top));
+    expect(balanceText.style!.fontSize, greaterThanOrEqualTo(40));
+    expect(wallets.bottom, lessThan(balance.top));
+    expect(
+      find.bySemanticsLabel('View and manage 2 active wallets'),
+      findsOneWidget,
+    );
     expect(hero.top, lessThan(balance.top));
     expect(add.bottom, lessThan(hero.bottom));
-    expect(hero.bottom, lessThan(plan.top));
+    expect(visibleHero.bottom, lessThan(plan.top));
     expect(plan.bottom, lessThan(loans.top));
     expect(plan.top, lessThan(nav.top));
     expect(loans.top, greaterThan(plan.top));
     expect(add.width, greaterThanOrEqualTo(250));
+    expect(find.bySemanticsLabel('Add an entry'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Adventure balance fits a long negative value at large text', (
+    tester,
+  ) async {
+    configure(tester, const Size(320, 640), scale: 1.6);
+    final base = synthetic(populated: false);
+    final ledger = base
+        .copy(
+          openings: {Wallet.cash: 0, Wallet.gcash: 0},
+          preferences: base.preferences.copy(
+            visualStyle: VisualStyle.adventure,
+          ),
+        )
+        .put(
+          Entry(
+            id: 'large_negative_balance',
+            kind: EntryKind.expense,
+            centavos: maxCentavos,
+            date: '2026-10-12',
+            wallet: Wallet.cash,
+            categoryId: 'food',
+            createdAt: 1,
+            updatedAt: 1,
+          ),
+        );
+    final app = fixture(ledger);
+    addTearDown(app.dispose);
+    await tester.pumpWidget(PocketApp(controller: app));
+    await tester.pumpAndSettle();
+
+    final amount = tester.widget<Text>(
+      find.byKey(const ValueKey('adventure-balance')),
+    );
+    expect(app.ledger.activeWalletBalance, -maxCentavos);
+    expect(amount.data, money(-maxCentavos));
+    expect(
+      tester.getRect(find.byKey(const ValueKey('adventure-wallet-action'))).top,
+      lessThan(
+        tester.getRect(find.byKey(const ValueKey('adventure-balance'))).top,
+      ),
+    );
     expect(find.bySemanticsLabel('Add an entry'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -291,16 +375,18 @@ void main() {
             .backgroundColor,
         const Color(0xFF10251F),
       );
-      expect(
-        tester
-            .widget<AnimatedSwitcher>(find.byType(AnimatedSwitcher).first)
-            .duration,
-        const Duration(milliseconds: 150),
-      );
       final digit = find.byKey(const ValueKey('key-1'));
       await tester.ensureVisible(digit);
+      final amount = find.byKey(const ValueKey('entry-amount-value'));
+      final initialAmount = tester.getRect(amount);
+      expect(tester.widget<Text>(amount).data, '0');
+      expect(tester.widget<Press>(digit).raised, isTrue);
+      expect(find.byType(AnimatedSwitcher), findsNothing);
       await tester.tap(digit);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      expect(tester.widget<Text>(amount).data, '1');
+      expect(tester.getRect(amount), initialAmount);
+      expect(find.byType(AnimatedSwitcher), findsNothing);
       expect(
         find.bySemanticsLabel('Amount in Philippine pesos, 1'),
         findsOneWidget,

@@ -1291,7 +1291,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('quick-category-food')));
+      final quickFood = find.byKey(const ValueKey('quick-category-food'));
+      final bottomNav = find.byKey(const ValueKey('home-tab-bar'));
+      for (var attempt = 0; attempt < 5; attempt++) {
+        if (quickFood.evaluate().isNotEmpty &&
+            tester.getRect(quickFood).bottom <= tester.getRect(bottomNav).top) {
+          break;
+        }
+        await tester.drag(
+          find.byKey(const ValueKey('today-scroll')),
+          const Offset(0, -300),
+        );
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(quickFood);
+      await tester.tap(quickFood);
       await tester.pumpAndSettle();
       for (final digit in ['1', '4', '8', '.', '5', '0']) {
         await tester.tap(find.byKey(ValueKey('key-$digit')));

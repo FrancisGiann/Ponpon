@@ -483,44 +483,21 @@ class _EntryPageState extends State<EntryPage> {
                                               Flexible(
                                                 child: FittedBox(
                                                   fit: BoxFit.scaleDown,
-                                                  child: AnimatedSwitcher(
-                                                    duration:
-                                                        MotionScope.of(context)
-                                                        ? Duration.zero
-                                                        : const Duration(
-                                                            milliseconds: 150,
-                                                          ),
-                                                    switchInCurve:
-                                                        Curves.easeOutBack,
-                                                    transitionBuilder:
-                                                        (
-                                                          child,
-                                                          animation,
-                                                        ) => FadeTransition(
-                                                          opacity: animation,
-                                                          child:
-                                                              ScaleTransition(
-                                                                scale:
-                                                                    animation,
-                                                                child: child,
-                                                              ),
-                                                        ),
-                                                    child: Text(
-                                                      draft.amount.isEmpty
-                                                          ? '0'
-                                                          : draft.amount,
-                                                      key: ValueKey(
-                                                        draft.amount,
-                                                      ),
-                                                      style: textStyle(
-                                                        context,
-                                                        size: small ? 54 : 72,
-                                                        weight: FontWeight.w500,
-                                                        color: p.adventure
-                                                            ? adventureHudText
-                                                            : null,
-                                                        tabular: true,
-                                                      ),
+                                                  child: Text(
+                                                    draft.amount.isEmpty
+                                                        ? '0'
+                                                        : draft.amount,
+                                                    key: const ValueKey(
+                                                      'entry-amount-value',
+                                                    ),
+                                                    style: textStyle(
+                                                      context,
+                                                      size: small ? 54 : 72,
+                                                      weight: FontWeight.w500,
+                                                      color: p.adventure
+                                                          ? adventureHudText
+                                                          : null,
+                                                      tabular: true,
                                                     ),
                                                   ),
                                                 ),

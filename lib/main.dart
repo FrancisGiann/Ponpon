@@ -89,10 +89,10 @@ class _BootstrapAppState extends State<BootstrapApp> {
       final chosen = await bridge.pickBackup();
       if (chosen == null || !mounted || !dialogContext.mounted) return;
       final imported = Ledger.decode(chosen);
-      final ledger = imported.copy(
+      final quietBills = imported.withoutBillReminders();
+      final ledger = quietBills.copy(
         preferences: imported.preferences.copy(balanceWidgetVisible: false),
         allowance: imported.allowance?.copy(enabled: false),
-        bills: imported.bills.map((b) => b.copy(remind: false)).toList(),
       );
       final approved = await confirm(
         dialogContext,
